@@ -8,3 +8,4 @@ store/
 # Agent/scaffolding artifacts
 group/
 ipc/
+push.sh
