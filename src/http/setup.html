@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CarapaMail Setup</title>
+  <link rel="icon" href="data:,">
+  <style>
+    /*INJECT_CSS*/
+  </style>
+</head>
+
+<body>
+  <div class="bg-grid"></div>
+  <div class="container">
+    <div style="text-align:center">
+      <img src="data:image/png;base64,/*INJECT_LOGO*/" style="filter: drop-shadow(0 0 5px rgba(34,211,238,0.5));"
+        alt="CarapaMail Logo" />
+      <div>
+
+        <div style="display:flex;align-items:center;gap:16px;margin-bottom:8px;margin-top:20px">
+
+
+        </div>
+        <p class="subtitle" style="margin-top:8px;">Manage email accounts. Each account routes through CarapaMail's AI
+          filter.</p>
+        <div id="auth-prompt" style="display:none;" class="card">
+          <div id="user-login">
+            <p style="margin-bottom:8px;font-weight:500;">Login</p>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <input id="user-email" type="email" placeholder="Email address"
+                style="padding:8px;background:rgba(0,0,0,0.5);color:#fff;border:1px solid rgba(255,255,255,0.15);border-radius:4px;outline:none;">
+              <input id="user-password" type="password" placeholder="CarapaMail password"
+                style="padding:8px;background:rgba(0,0,0,0.5);color:#fff;border:1px solid rgba(255,255,255,0.15);border-radius:4px;outline:none;"
+                onkeydown="if(event.key==='Enter') submitUserLogin()">
+              <button class="primary" onclick="submitUserLogin()">Login</button>
+            </div>
+            <div id="user-login-error" class="error"></div>
+            <div style="margin-top:10px;font-size:12px;color:#888;display:flex;justify-content:space-between;">
+              <a href="#" onclick="showAdminLogin();return false;">Admin login</a>
+              <a href="#" id="auth-cancel-btn" style="display:none;"
+                onclick="cancelAuthPrompt();return false;">Cancel</a>
+            </div>
+          </div>
+          <div id="admin-login" style="display:none;">
+            <p style="margin-bottom:8px;font-weight:500;">Admin login</p>
+            <div style="display:flex;gap:8px;">
+              <input id="auth-token" type="password" placeholder="Enter HTTP_API_TOKEN"
+                style="flex:1;padding:8px;background:rgba(0,0,0,0.5);color:#fff;border:1px solid rgba(255,255,255,0.15);border-radius:4px;outline:none;"
+                onkeydown="if(event.key==='Enter') submitToken()">
+              <button class="primary" onclick="submitToken()">Unlock</button>
+            </div>
+            <p style="margin-top:10px;font-size:12px;color:#888;"><a href="#"
+                onclick="showUserLogin();return false;">Back to login</a></p>
+          </div>
+        </div>
+        <div id="status-msg"></div>
+        <div id="main-ui">
+          <div class="tabs" id="main-tabs">
+            <div class="tab active" data-tab="accounts" onclick="switchMainTab('accounts')">Accounts</div>
+            <div class="tab" data-tab="quarantine" onclick="switchMainTab('quarantine')">Quarantine</div>
+            <div class="tab" data-tab="audit" onclick="switchMainTab('audit')">Audit Logs</div>
+            <div class="tab" data-tab="rules" onclick="switchMainTab('rules')" id="tab-nav-rules" style="display:none;">
+              Rules</div>
+            <div class="tab" data-tab="whitelist" onclick="switchMainTab('whitelist')" id="tab-nav-whitelist"
+              style="display:none;">Whitelist</div>
+            <div class="tab" data-tab="stats" onclick="switchMainTab('stats')" id="tab-nav-stats" style="display:none;">
+              Stats</div>
+          </div>
+
+          <div id="tab-accounts" class="tab-content active">
+            <div style="margin-bottom: 16px; display:flex; gap:8px; align-items:center;">
+              <button class="primary" id="add-btn" onclick="showAddForm()">+ Add Account</button>
+              <span style="flex:1;"></span>
+              <button id="logout-btn" style="display:none;" onclick="logout()">Logout</button>
+            </div>
+            <div id="accounts-list">
+              <div class="empty">Loading...</div>
+            </div>
+          </div>
+
+          <div id="tab-quarantine" class="tab-content">
+            <div style="margin-bottom: 16px; display:flex; gap:8px; align-items:center;">
+              <div style="font-size:14px; color:#888;">Blocked messages awaiting review</div>
+              <span style="flex:1;"></span>
+              <button onclick="loadQuarantine()">Refresh</button>
+            </div>
+            <div id="quarantine-list">
+              <div class="empty">No messages in quarantine</div>
+            </div>
+          </div>
+
+          <div id="tab-audit" class="tab-content">
+            <div style="margin-bottom: 16px; display:flex; gap:8px; align-items:center;">
+              <div style="font-size:14px; color:#888;">System audit logs</div>
+              <span style="flex:1;"></span>
+              <button onclick="loadAuditLogs()">Refresh</button>
+            </div>
+            <div id="audit-list">
+              <div class="empty">Loading...</div>
+            </div>
+          </div>
+
+          <div id="tab-rules" class="tab-content">
+            <div style="margin-bottom: 16px; display:flex; gap:8px; align-items:center;">
+              <button class="primary" id="add-rule-btn" onclick="showAddRuleForm()">+ Add Rule</button>
+              <span style="flex:1;"></span>
+              <button onclick="loadRules()">Refresh</button>
+            </div>
+            <div id="rules-list">
+              <div class="empty">Loading rules...</div>
+            </div>
+          </div>
+
+          <div id="tab-whitelist" class="tab-content">
+            <div style="margin-bottom: 16px; display:flex; gap:8px; align-items:center;">
+              <button class="primary" id="add-whitelist-btn" onclick="showAddWhitelistForm()">+ Add Whitelist</button>
+              <span style="flex:1;"></span>
+              <button onclick="loadWhitelist()">Refresh</button>
+            </div>
+            <div id="whitelist-list">
+              <div class="empty">Loading whitelist...</div>
+            </div>
+          </div>
+
+          <div id="tab-stats" class="tab-content">
+            <div style="margin-bottom: 16px; display:flex; gap:8px; align-items:center;">
+              <div style="font-size:14px; color:#888;">Filtering statistics across all accounts</div>
+              <span style="flex:1;"></span>
+              <button onclick="loadStats()">Refresh</button>
+            </div>
+            <div id="stats-list">
+              <div class="empty">Loading stats...</div>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top: 32px; text-align: center;">
+          <a href="https://mail.carapa.ai/docs" target="_blank" rel="noopener noreferrer"
+            style="display:inline-block;text-decoration:none;">
+            <button class="warning" style="pointer-events:none;">Help</button>
+          </a>
+        </div>
+      </div>
+
+      <div class="form-overlay" id="form-overlay">
+        <div class="form-panel">
+          <h2 id="form-title">Add Account</h2>
+          <form id="account-form" onsubmit="return handleSubmit(event)">
+            <input type="hidden" id="f-mode" value="add">
+            <div class="form-group">
+              <label for="f-id">Account ID</label>
+              <input id="f-id" name="id" placeholder="e.g. work, personal" required pattern="[a-z0-9][a-z0-9_-]*">
+            </div>
+            <div class="form-group">
+              <label for="f-email">Email Address</label>
+              <input id="f-email" name="email" type="email" placeholder="alice@example.com" required>
+            </div>
+            <div class="form-group">
+              <label for="f-localPassword">CarapaMail Password</label>
+              <input id="f-localPassword" name="localPassword" type="password"
+                placeholder="Password for mail client auth">
+            </div>
+
+            <div class="section-title" style="display:flex;align-items:center;gap:12px;">
+              IMAP (Incoming)
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:normal;cursor:pointer;">
+                <input type="checkbox" id="f-inboundEnabled" checked> Enabled
+              </label>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="f-imapHost">Host</label>
+                <input id="f-imapHost" name="imapHost" placeholder="imap.example.com" required>
+              </div>
+              <div class="form-group" style="max-width:100px;">
+                <label for="f-imapPort">Port</label>
+                <input id="f-imapPort" name="imapPort" type="number" value="993">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="f-imapUser">Username</label>
+                <input id="f-imapUser" name="imapUser" placeholder="alice@example.com" required>
+              </div>
+              <div class="form-group">
+                <label for="f-imapPass">Password</label>
+                <input id="f-imapPass" name="imapPass" type="password" placeholder="App password">
+              </div>
+            </div>
+
+            <div class="section-title" style="display:flex;align-items:center;gap:12px;">
+              SMTP (Outgoing)
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:normal;cursor:pointer;">
+                <input type="checkbox" id="f-outboundEnabled" checked> Enabled
+              </label>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="f-smtpHost">Host</label>
+                <input id="f-smtpHost" name="smtpHost" placeholder="smtp.example.com">
+              </div>
+              <div class="form-group" style="max-width:100px;">
+                <label for="f-smtpPort">Port</label>
+                <input id="f-smtpPort" name="smtpPort" type="number" value="587">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="f-smtpUser">Username</label>
+                <input id="f-smtpUser" name="smtpUser" placeholder="alice@example.com">
+              </div>
+              <div class="form-group">
+                <label for="f-smtpPass">Password</label>
+                <input id="f-smtpPass" name="smtpPass" type="password" placeholder="App password">
+              </div>
+            </div>
+            <div class="form-group" style="max-width:200px;">
+              <label for="f-smtpSecure">Security</label>
+              <select id="f-smtpSecure" name="smtpSecure">
+                <option value="starttls" selected>STARTTLS</option>
+                <option value="tls">TLS</option>
+                <option value="none">None</option>
+              </select>
+            </div>
+
+            <div id="permissions-section">
+              <div class="section-title">MCP Permissions</div>
+              <div style="display:flex;flex-wrap:wrap;gap:16px;">
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                  <input type="checkbox" id="f-mcpReceiveEnabled" checked> MCP read
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                  <input type="checkbox" id="f-mcpSendEnabled"> MCP send
+                </label>
+              </div>
+            </div>
+
+            <div class="section-title">MCP Token</div>
+            <div class="form-group">
+              <label for="f-mcpToken">Token (used by MCP clients to access this account)</label>
+              <div style="display:flex;gap:8px;">
+                <input id="f-mcpToken" name="mcpToken" type="password" placeholder="Leave blank to keep unchanged"
+                  style="flex:1;">
+                <button type="button" onclick="generateToken()" style="white-space:nowrap;">Generate</button>
+              </div>
+              <div id="f-mcpTokenStatus" style="font-size:12px;color:#888;margin-top:4px;"></div>
+            </div>
+
+            <div id="form-error" class="error"></div>
+            <div class="form-actions">
+              <button type="button" onclick="hideForm()">Cancel</button>
+              <button type="submit" class="primary" id="form-submit">Add Account</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="form-overlay" id="prompts-overlay">
+        <div class="form-panel" style="width:600px;">
+          <h2>Custom Filter Prompts</h2>
+          <p style="font-size:13px;color:#666;margin-bottom:16px;">Customize the AI filter prompts for this account.</p>
+          <div class="tabs">
+            <div class="tab active" onclick="switchPromptTab('inbound')">Inbound</div>
+            <div class="tab" onclick="switchPromptTab('outbound')">Outbound</div>
+            <div class="tab" onclick="switchPromptTab('agent')">Agent</div>
+          </div>
+          <input type="hidden" id="p-accountId" value="">
+          <div id="ptab-inbound" class="tab-content active">
+            <div class="prompt-group">
+              <div class="prompt-mode" style="display:flex;gap:12px;margin-bottom:10px;">
+                <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+                  <input type="radio" name="p-mode-inbound" value="default" checked
+                    onchange="togglePromptTextarea('inbound')"> Default
+                </label>
+                <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+                  <input type="radio" name="p-mode-inbound" value="append" onchange="togglePromptTextarea('inbound')">
+                  Append
+                </label>
+                <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+                  <input type="radio" name="p-mode-inbound" value="replace" onchange="togglePromptTextarea('inbound')">
+                  Replace
+                </label>
+              </div>
+              <textarea id="p-inbound" placeholder="Enter custom inbound filter prompt..." disabled></textarea>
+            </div>
+          </div>
+          <div id="ptab-outbound" class="tab-content">
+            <div class="prompt-group">
+              <div class="prompt-mode" style="display:flex;gap:12px;margin-bottom:10px;">
+                <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+                  <input type="radio" name="p-mode-outbound" value="default" checked
+                    onchange="togglePromptTextarea('outbound')"> Default
+                </label>
+                <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+                  <input type="radio" name="p-mode-outbound" value="append" onchange="togglePromptTextarea('outbound')">
+                  Append
+                </label>
+                <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+                  <input type="radio" name="p-mode-outbound" value="replace"
+                    onchange="togglePromptTextarea('outbound')"> Replace
+                </label>
+              </div>
+              <textarea id="p-outbound" placeholder="Enter custom outbound filter prompt..." disabled></textarea>
+            </div>
+          </div>
+          <div id="ptab-agent" class="tab-content">
+            <div class="prompt-group">
+              <div class="prompt-mode" style="display:flex;gap:12px;margin-bottom:10px;">
+                <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+                  <input type="radio" name="p-mode-agent" value="default" checked
+                    onchange="togglePromptTextarea('agent')"> Default
+                </label>
+                <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+                  <input type="radio" name="p-mode-agent" value="append" onchange="togglePromptTextarea('agent')">
+                  Append
+                </label>
+                <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+                  <input type="radio" name="p-mode-agent" value="replace" onchange="togglePromptTextarea('agent')">
+                  Replace
+                </label>
+              </div>
+              <textarea id="p-agent" placeholder="Enter custom agent filter prompt..." disabled></textarea>
+            </div>
+          </div>
+          <div id="prompts-error" class="error"></div>
+          <div class="form-actions">
+            <button type="button" onclick="hidePrompts()">Cancel</button>
+            <button type="button" class="primary" id="prompts-submit" onclick="handlePromptsSave()">Save
+              Prompts</button>
+          </div>
+        </div>
+      </div>
+      <div class="form-overlay" id="rule-overlay">
+        <div class="form-panel">
+          <h2 id="rule-form-title">Add Rule</h2>
+          <form id="rule-form" onsubmit="return handleRuleSubmit(event)">
+            <div class="form-group">
+              <label for="r-type">Action</label>
+              <select id="r-type" name="type" required>
+                <option value="allow">Allow (Whitelist)</option>
+                <option value="block">Block</option>
+                <option value="quarantine">Quarantine</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="r-field">Field to Match</label>
+              <select id="r-field" name="match_field" required>
+                <option value="from">From Email</option>
+                <option value="to">To Email</option>
+                <option value="subject">Subject</option>
+                <option value="body">Body (Regex)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="r-pattern">Pattern (Regex supported)</label>
+              <input id="r-pattern" name="match_pattern" placeholder="e.g. .*@spamdomain\.com$" required>
+              <div style="font-size:12px;color:#888;margin-top:4px;">Use proper regex ^ and $ if you want exact matches.
+              </div>
+            </div>
+            <div id="rule-form-error" class="error"></div>
+            <div class="form-actions">
+              <button type="button" onclick="hideRuleForm()">Cancel</button>
+              <button type="submit" class="primary" id="rule-submit">Save Rule</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="form-overlay" id="whitelist-overlay">
+        <div class="form-panel">
+          <h2 id="whitelist-form-title">Add Whitelist Entry</h2>
+          <form id="whitelist-form" onsubmit="return handleWhitelistSubmit(event)">
+            <div class="form-group">
+              <label for="w-type">Type</label>
+              <select id="w-type" name="type" required>
+                <option value="email">Exact Email Address</option>
+                <option value="domain">Entire Domain</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="w-pattern">Email or Domain</label>
+              <input id="w-pattern" name="pattern" placeholder="e.g. user@example.com or example.com" required>
+            </div>
+            <div id="whitelist-form-error" class="error"></div>
+            <div class="form-actions">
+              <button type="button" onclick="hideWhitelistForm()">Cancel</button>
+              <button type="submit" class="primary" id="whitelist-submit">Add Entry</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <script>
+        /*INJECT_JS*/
+      </script>
+</body>
+
+</html>

@@ -1,0 +1,32 @@
+# Optional SnappyMail webmail — use with:
+#   docker compose -f docker-compose.yml -f docker-compose.webmail.yml up -d
+services:
+  snappymail:
+    image: djmaze/snappymail:latest
+    restart: unless-stopped
+    depends_on:
+      - carapamail
+    ports:
+      - "127.0.0.1:${WEBMAIL_PORT:-8888}:8888"
+    volumes:
+      - snappymail-data:/var/lib/snappymail
+      - ./webmail:/webmail-config:ro
+    entrypoint: ["/webmail-config/entrypoint.sh"]
+    environment:
+      IMAP_PROXY_PORT: ${IMAP_PROXY_PORT:-1993}
+      SMTP_PORT: ${SMTP_PORT:-2525}
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETUID
+      - SETGID
+    mem_limit: 256m
+    pids_limit: 64
+
+volumes:
+  snappymail-data:

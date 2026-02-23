@@ -1,0 +1,10 @@
+node_modules/
+dist/
+store/
+.env
+*.db
+*.db-journal
+
+# Agent/scaffolding artifacts
+group/
+ipc/

@@ -1,0 +1,323 @@
+// Required Notice: Copyright Regun Software SRL (https://carapa.ai)
+
+import net from 'net';
+import tls from 'tls';
+import { IMAP_PROXY_PORT } from '../config.js';
+import { authenticateAccount, getAllAccounts, type Account } from '../accounts.js';
+import { createInterceptor } from './interceptor.js';
+import { logger } from '../logger.js';
+import { checkRateLimit, recordAttempt } from '../rate-limiter.js';
+import { getTlsCertificate } from '../crypto.js';
+
+export function startImapProxy(): net.Server {
+  const accounts = getAllAccounts();
+  const certs = getTlsCertificate();
+
+  if (accounts.length === 0) {
+    logger.info('imap', 'No accounts configured, IMAP proxy disabled');
+    return net.createServer();
+  }
+
+  const server = net.createServer(socket => {
+    let clientSocket: net.Socket | tls.TLSSocket = socket;
+    const clientIp = socket.remoteAddress || 'unknown';
+    let clientAddr = `${clientIp}:${socket.remotePort}`;
+    logger.debug('imap', `Client connected: ${clientAddr}`);
+
+    const interceptor = createInterceptor();
+    let currentFolder = '';
+    let currentUidValidity = 0;
+    let upstreamSocket: tls.TLSSocket | null = null;
+    let account: Account | null = null;
+    let authenticated = false;
+    let upgrading = false;
+
+    // Track AUTHENTICATE PLAIN continuation
+    let awaitingPlainContinuation = false;
+    let authenticateTag = '';
+
+    // Send IMAP greeting to client (before upstream is connected)
+    socket.write('* OK CarapaMail IMAP proxy ready\r\n');
+
+    function connectUpstream(acc: Account): Promise<tls.TLSSocket> {
+      return new Promise((resolve, reject) => {
+        const sock = tls.connect(
+          { host: acc.imap.host, port: acc.imap.port, rejectUnauthorized: acc.strictTls },
+          () => {
+            logger.info('imap', `Connected to upstream ${acc.imap.host}:${acc.imap.port} for ${acc.email}`);
+            resolve(sock);
+          },
+        );
+        sock.on('error', (err: Error) => reject(err));
+      });
+    }
+
+    function setupUpstreamPipe(sock: tls.TLSSocket) {
+      upstreamSocket = sock;
+      let processing = Promise.resolve();
+
+      sock.on('data', (data: Buffer) => {
+        const str = data.toString('utf-8');
+
+        // Track UIDVALIDITY from server SELECT/EXAMINE responses
+        const validityMatch = str.match(/\[UIDVALIDITY\s+(\d+)\]/);
+        if (validityMatch) {
+          currentUidValidity = parseInt(validityMatch[1], 10);
+          interceptor.setContext(currentFolder, currentUidValidity, account?.id || 'default');
+        }
+
+        processing = processing.then(async () => {
+          try {
+            const processed = await interceptor.process(data);
+            if (processed.length > 0 && !clientSocket.destroyed) {
+              clientSocket.write(processed);
+            }
+          } catch (err) {
+            logger.error('imap', `Processing error: ${err instanceof Error ? err.message : err}`);
+            if (!clientSocket.destroyed) clientSocket.write(data);
+          }
+        });
+      });
+
+      sock.on('end', () => clientSocket.end());
+      sock.on('error', (err: Error) => {
+        logger.error('imap', `Upstream error: ${err.message}`);
+        clientSocket.destroy();
+      });
+    }
+
+    async function handleAuth(tag: string, email: string, password: string) {
+      const rateLimit = checkRateLimit(clientIp, 'imap-auth');
+      if (!rateLimit.allowed) {
+        logger.warn('imap', `Rate limit exceeded for IP ${clientIp}`);
+        clientSocket.write(`${tag} NO [UNAVAILABLE] Too many failed attempts. Try again in ${rateLimit.retryAfter} seconds.\r\n`);
+        return;
+      }
+
+      const acc = authenticateAccount(email, password);
+      if (!acc) {
+        recordAttempt(clientIp, 'imap-auth', false);
+        clientSocket.write(`${tag} NO [AUTHENTICATIONFAILED] Invalid credentials\r\n`);
+        return;
+      }
+
+      recordAttempt(clientIp, 'imap-auth', true);
+      account = acc;
+
+      try {
+        const sock = await connectUpstream(acc);
+
+        // Consume upstream greeting (wait for "* OK")
+        await new Promise<void>((resolve) => {
+          const onData = (data: Buffer) => {
+            const str = data.toString('utf-8');
+            if (str.includes('* OK')) {
+              sock.removeListener('data', onData);
+              resolve();
+            }
+          };
+          sock.on('data', onData);
+        });
+
+        // Login to upstream with real credentials
+        const loginTag = 'A0';
+        const loginCmd = `${loginTag} LOGIN "${escapeImapString(acc.imap.user)}" "${escapeImapString(acc.imap.pass)}"\r\n`;
+
+        const loginResult = await new Promise<string>((resolve) => {
+          let buf = '';
+          const onData = (data: Buffer) => {
+            buf += data.toString('utf-8');
+            if (buf.includes(`${loginTag} OK`) || buf.includes(`${loginTag} NO`) || buf.includes(`${loginTag} BAD`)) {
+              sock.removeListener('data', onData);
+              resolve(buf);
+            }
+          };
+          sock.on('data', onData);
+          sock.write(loginCmd);
+        });
+
+        if (!loginResult.includes(`${loginTag} OK`)) {
+          logger.warn('imap', `Upstream auth failed for ${acc.email}`);
+          clientSocket.write(`${tag} NO [AUTHENTICATIONFAILED] Upstream auth failed\r\n`);
+          sock.destroy();
+          return;
+        }
+
+        authenticated = true;
+        setupUpstreamPipe(sock);
+
+        // Tell client auth succeeded
+        clientSocket.write(`${tag} OK LOGIN completed\r\n`);
+      } catch (err: any) {
+        logger.error('imap', `Auth error for ${email}: ${err.message}`);
+        clientSocket.write(`${tag} NO [UNAVAILABLE] ${err.message}\r\n`);
+      }
+    }
+
+    async function handleStartTls(tag: string) {
+      if (upgrading || clientSocket instanceof tls.TLSSocket) {
+        clientSocket.write(`${tag} BAD Already in TLS mode\r\n`);
+        return;
+      }
+
+      upgrading = true;
+      clientSocket.write(`${tag} OK Begin TLS negotiation now\r\n`);
+
+      // Give client a small moment to prepare
+      await new Promise(r => setTimeout(r, 50));
+
+      const tlsSocket = new tls.TLSSocket(socket, {
+        isServer: true,
+        key: certs.key,
+        cert: certs.cert,
+      });
+
+      tlsSocket.on('secure', () => {
+        logger.info('imap', `TLS secured for ${clientAddr}`);
+        clientSocket = tlsSocket;
+        upgrading = false;
+        // Re-attach data listeners for the new socket
+        attachDataListener(tlsSocket);
+      });
+
+      tlsSocket.on('error', (err) => {
+        logger.error('imap', `TLS error for ${clientAddr}: ${err.message}`);
+        socket.destroy();
+      });
+
+      // Stop listening to raw socket data
+      socket.removeAllListeners('data');
+    }
+
+    function attachDataListener(sock: net.Socket | tls.TLSSocket) {
+      sock.on('data', (data) => {
+        const str = data.toString('utf-8');
+
+        // Before auth: handle CAPABILITY, LOGIN, AUTHENTICATE locally
+        if (!authenticated) {
+          // Handle AUTHENTICATE PLAIN continuation (base64 credentials line)
+          if (awaitingPlainContinuation) {
+            awaitingPlainContinuation = false;
+            const decoded = Buffer.from(str.trim(), 'base64').toString('utf-8');
+            const parts = decoded.split('\0');
+            const email = parts[1] || '';
+            const password = parts[2] || '';
+            handleAuth(authenticateTag, email, password);
+            return;
+          }
+
+          // CAPABILITY
+          if (/^\S+ CAPABILITY/i.test(str)) {
+            const tag = str.split(' ')[0];
+            const caps = ['IMAP4rev1', 'AUTH=PLAIN', 'LOGIN'];
+            if (!(sock instanceof tls.TLSSocket)) caps.push('STARTTLS');
+            clientSocket.write(`* CAPABILITY ${caps.join(' ')}\r\n${tag} OK CAPABILITY completed\r\n`);
+            return;
+          }
+
+          // STARTTLS
+          if (/^\S+ STARTTLS/i.test(str)) {
+            const tag = str.split(' ')[0];
+            handleStartTls(tag);
+            return;
+          }
+
+          // NOOP
+          if (/^\S+ NOOP/i.test(str)) {
+            const tag = str.split(' ')[0];
+            clientSocket.write(`${tag} OK NOOP completed\r\n`);
+            return;
+          }
+
+          // LOGIN: TAG LOGIN "user" "pass"
+          if (/^\S+ LOGIN /i.test(str)) {
+            const tag = str.split(' ')[0];
+            const loginMatch = str.match(/^\S+ LOGIN\s+(?:"((?:[^"\\]|\\.)*)"|(\S+))\s+(?:"((?:[^"\\]|\\.)*)"|(\S+))/i);
+            const email = loginMatch ? (loginMatch[1] ?? loginMatch[2] ?? '').replace(/\\(.)/g, '$1') : '';
+            const password = loginMatch ? (loginMatch[3] ?? loginMatch[4] ?? '').replace(/\\(.)/g, '$1') : '';
+            handleAuth(tag, email, password);
+            return;
+          }
+
+          // AUTHENTICATE PLAIN
+          if (/^\S+ AUTHENTICATE PLAIN/i.test(str)) {
+            const parts = str.trim().split(/\s+/);
+            authenticateTag = parts[0];
+            if (parts.length > 3) {
+              // Inline: TAG AUTHENTICATE PLAIN <base64>
+              const decoded = Buffer.from(parts[3], 'base64').toString('utf-8');
+              const authParts = decoded.split('\0');
+              handleAuth(authenticateTag, authParts[1] || '', authParts[2] || '');
+            } else {
+              awaitingPlainContinuation = true;
+              clientSocket.write('+ \r\n');
+            }
+            return;
+          }
+
+          // LOGOUT before auth
+          if (/^\S+ LOGOUT/i.test(str)) {
+            const tag = str.split(' ')[0];
+            clientSocket.write(`* BYE CarapaMail proxy closing\r\n${tag} OK LOGOUT completed\r\n`);
+            clientSocket.end();
+            return;
+          }
+
+          // Unknown pre-auth command
+          const tag = str.split(' ')[0];
+          if (tag && tag !== '*') {
+            clientSocket.write(`${tag} BAD Please authenticate first\r\n`);
+          }
+          return;
+        }
+
+        // Post-auth: pipe to upstream
+        if (!upstreamSocket || upstreamSocket.destroyed) {
+          const tag = str.split(' ')[0];
+          if (tag) clientSocket.write(`${tag} NO Connection lost\r\n`);
+          return;
+        }
+
+        // Track SELECT/EXAMINE to know the current folder
+        const selectMatch = str.match(/^\S+ (?:SELECT|EXAMINE)\s+"?([^"\r\n]+?)"?\s*\r\n/i);
+        if (selectMatch) {
+          currentFolder = selectMatch[1].replace(/"/g, '');
+        }
+
+        upstreamSocket.write(data);
+      });
+    }
+
+    attachDataListener(socket);
+
+    // Cleanup
+    socket.on('end', () => {
+      if (upstreamSocket) {
+        const remaining = interceptor.flush();
+        if (remaining.length > 0 && !clientSocket.destroyed) {
+          clientSocket.write(remaining);
+        }
+        upstreamSocket.end();
+      }
+    });
+
+    socket.on('error', (err) => {
+      logger.error('imap', `Client error (${clientAddr}): ${err.message}`);
+      if (upstreamSocket) upstreamSocket.destroy();
+    });
+  });
+
+  server.on('error', (err) => {
+    logger.error('imap', `Proxy server error: ${err}`);
+  });
+
+  server.listen(IMAP_PROXY_PORT, () => {
+    logger.info('imap', `Proxy listening on port ${IMAP_PROXY_PORT}`);
+  });
+
+  return server;
+}
+
+function escapeImapString(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}

@@ -1,0 +1,3 @@
+[test]
+# Only run tests from src/, not stale compiled output in dist/
+root = "src"
