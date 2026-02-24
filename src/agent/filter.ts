@@ -247,6 +247,28 @@ const PASSTHROUGH: FilterDecision = {
   unavailable: true,
 };
 
+/** Verify connection to the model. */
+export async function checkModelConnection(): Promise<{ ok: boolean; message: string }> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout for healthcheck
+
+    await getClient().messages.create(
+      {
+        model: config.ANTHROPIC_MODEL,
+        max_tokens: 1,
+        messages: [{ role: 'user', content: 'test' }],
+      },
+      { signal: controller.signal },
+    );
+
+    clearTimeout(timeout);
+    return { ok: true, message: 'Connection successful' };
+  } catch (err: any) {
+    return { ok: false, message: err.message };
+  }
+}
+
 /** Analyze a single content chunk and return a FilterDecision. */
 async function analyzeChunk(content: string, filterContext: FilterContext, accountId?: string): Promise<FilterDecision> {
   const controller = new AbortController();
@@ -284,7 +306,11 @@ async function analyzeChunk(content: string, filterContext: FilterContext, accou
 }
 
 export async function inspectEmail(email: EmailSummary, contextOverride?: FilterContext, accountId?: string): Promise<FilterDecision> {
-  if (!config.ANTHROPIC_AUTH_TOKEN) {
+  if (!config.AI_FEATURES_ENABLED) {
+    return PASSTHROUGH;
+  }
+
+  if (!config.ANTHROPIC_AUTH_TOKEN && !config.ANTHROPIC_BASE_URL.includes('localhost')) {
     if (!config.AUTO_QUARANTINE) return PASSTHROUGH;
     return { action: 'quarantine', reason: 'No API key configured', confidence: 0, categories: [] };
   }

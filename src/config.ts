@@ -36,6 +36,7 @@ export const HTTP_PORT = parseInt(process.env.HTTP_PORT || '3200', 10);
 
 // AI filtering
 export const ANTHROPIC_AUTH_TOKEN = process.env.ANTHROPIC_AUTH_TOKEN || '';
+export const AI_FEATURES_ENABLED = process.env.AI_FEATURES_ENABLED !== 'false';
 export const ANTHROPIC_BASE_URL = process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
 export const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
 export const FILTER_CONFIDENCE_THRESHOLD = parseFloat(process.env.FILTER_CONFIDENCE_THRESHOLD || '0.7');

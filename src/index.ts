@@ -14,9 +14,12 @@ import {
   MCP_ENABLED,
   INBOUND_SCAN,
   HTTP_PORT,
+  AI_FEATURES_ENABLED,
+  ANTHROPIC_BASE_URL,
 } from './config.js';
 
 import { logger } from './logger.js';
+import { checkModelConnection } from './agent/filter.js';
 
 // Graceful shutdown
 const cleanup: (() => void)[] = [];
@@ -41,7 +44,27 @@ if (accounts.length === 0) {
 } else {
   logger.info('system', `Accounts: ${accounts.length} (${accounts.map(a => a.id).join(', ')})`);
 }
-logger.info('system', `AI model: ${ANTHROPIC_AUTH_TOKEN ? ANTHROPIC_MODEL : '(no API key)'}`);
+
+if (AI_FEATURES_ENABLED) {
+  const hasLocalBackend = ANTHROPIC_BASE_URL.includes('localhost') || ANTHROPIC_BASE_URL.includes('127.0.0.1');
+  if (!ANTHROPIC_AUTH_TOKEN && !hasLocalBackend) {
+    logger.error('system', 'AI_FEATURES_ENABLED is true, but no model configuration found!');
+    logger.error('system', 'Please set ANTHROPIC_AUTH_TOKEN (for Claude) or ANTHROPIC_BASE_URL (for local models).');
+    logger.error('system', 'To run without AI, explicitly set AI_FEATURES_ENABLED=false in your .env file.');
+  } else {
+    logger.info('system', `AI features: ENABLED (${ANTHROPIC_MODEL}) — testing connection...`);
+    const test = await checkModelConnection();
+    if (test.ok) {
+      logger.info('system', 'AI connection: SUCCESS');
+    } else {
+      logger.error('system', `AI connection: FAILED — ${test.message}`);
+      logger.warn('system', 'Filtering may fall back to failure action or passthrough until connection is fixed.');
+    }
+  }
+} else {
+  logger.info('system', 'AI features: DISABLED (manual override)');
+}
+
 logger.info('system', `Mode: ${AUTO_QUARANTINE ? 'active filtering' : 'log-only (passthrough)'}`);
 
 const smtp = startSmtpServer();

@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { PROJECT_ROOT, ALLOW_PROMPT_OVERRIDE, ALLOW_PROMPT_APPEND } from '../config.js';
 import { getAccountById } from '../accounts.js';
+import { logger } from '../logger.js';
 
 import { DLP_RULES } from '../email/dlp-rules.js';
 
@@ -11,6 +12,10 @@ const PROMPTS_DIR = path.join(PROJECT_ROOT, 'prompts');
 
 function loadPrompt(filename: string): string {
   const filePath = path.join(PROMPTS_DIR, filename);
+  if (!fs.existsSync(filePath)) {
+    logger.warn('system', `Prompt file not found: ${filename}`);
+    return '';
+  }
   return fs.readFileSync(filePath, 'utf-8').trim();
 }
 

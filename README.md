@@ -12,6 +12,8 @@ Its only job is to classify, block, sanitize, and route messages (e.g. to Quaran
 **For AI agents** — strips prompt injections, redacts PII, and quarantines suspicious content.
 Agents that read email through CarapaMail's MCP tools get clean, safe data without needing their own filtering logic.
 
+**Lite Mode** — Run without an AI model by setting `AI_FEATURES_ENABLED=false`. Useful for basic mail security (tracking pixel removal, HTML sanitization, and manual rules) without an LLM backend.
+
 ## How it works
 
 ```
@@ -163,6 +165,7 @@ Accounts are managed through the setup UI at `/setup` (or via the `/api/accounts
 | `SMTP_PORT` | `2525` | Local SMTP proxy port (binds to localhost only in Docker) |
 | `IMAP_PROXY_PORT` | `1993` | Local IMAP proxy port (binds to localhost only in Docker) |
 | `HTTP_PORT` | `3200` | Admin API + setup UI port |
+| `AI_FEATURES_ENABLED` | `true` | Master toggle for all AI filtering. If `false`, all AI logic is bypassed (lite/non-AI mode) |
 | `ANTHROPIC_AUTH_TOKEN` | — | LLM API key (required for AI filtering) |
 | `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | API base URL. Override to use a local proxy or alternative endpoint |
 | `ANTHROPIC_MODEL` | `claude-haiku-4-5-20251001` | Model for filtering. Haiku is recommended for low latency and cost |
