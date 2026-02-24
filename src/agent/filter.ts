@@ -274,10 +274,12 @@ async function analyzeChunk(content: string, filterContext: FilterContext, accou
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), config.FILTER_TIMEOUT);
 
+  const isAnthropicApi = config.ANTHROPIC_BASE_URL.includes('anthropic.com');
   const response = await getClient().messages.create(
     {
       model: config.ANTHROPIC_MODEL,
-      max_tokens: 256,
+      max_tokens: 1024,
+      ...(isAnthropicApi ? { thinking: { type: 'disabled' as const } } : {}),
       system: getFilterPrompt(filterContext, accountId),
       messages: [{ role: 'user', content }],
     },
@@ -286,8 +288,8 @@ async function analyzeChunk(content: string, filterContext: FilterContext, accou
 
   clearTimeout(timeout);
 
-  const text = response.content[0];
-  if (text.type !== 'text') throw new Error('AI returned non-text response');
+  const text = response.content.find(block => block.type === 'text');
+  if (!text || text.type !== 'text') throw new Error(`AI returned no text block (got ${response.content.length} blocks: ${response.content.map(b => b.type).join(', ') || 'empty'})`);
 
   // Parse JSON from response, tolerating markdown fences
   let json = text.text.trim();
