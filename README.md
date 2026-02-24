@@ -64,6 +64,17 @@ Inbound email is protected by two independent mechanisms that complement each ot
 
 The scanner is the first line of defense — it catches spam before the client polls. The interceptor is the safety net — if a message wasn't scanned yet, it filters on read. Together they ensure no unfiltered email reaches the client.
 
+## Requirements
+
+### Host Setup (Bun)
+- **Bun Runtime**: v1.1.0 or higher
+- **OpenSSL**: Required for auto-generating TLS certificates (STARTTLS).
+- **OS**: Linux, macOS, or Windows (v1.1+).
+
+### Container (Docker)
+- **Docker Engine**: v20.10.x+
+- **Docker Compose**: v2.0+
+
 ## Quick start
 
 ```bash

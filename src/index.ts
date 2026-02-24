@@ -20,6 +20,7 @@ import {
 
 import { logger } from './logger.js';
 import { checkModelConnection } from './agent/filter.js';
+import { checkTlsRequirements } from './crypto.js';
 
 // Graceful shutdown
 const cleanup: (() => void)[] = [];
@@ -37,6 +38,14 @@ logger.info('system', 'Starting CarapaMail...');
 await initDatabase();
 await initRateLimiter();
 await loadAccounts();
+
+const tlsCheck = checkTlsRequirements();
+if (!tlsCheck.ok) {
+  logger.warn('system', `TLS encryption: UNAVAILABLE — ${tlsCheck.message}`);
+  logger.warn('system', 'STARTTLS will be disabled. Connections will be plaintext ONLY.');
+} else {
+  logger.info('system', 'TLS encryption: AVAILABLE');
+}
 
 const accounts = getAllAccounts();
 if (accounts.length === 0) {

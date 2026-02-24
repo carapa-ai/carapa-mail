@@ -168,8 +168,8 @@ export function startImapProxy(): net.Server {
 
       const tlsSocket = new tls.TLSSocket(socket, {
         isServer: true,
-        key: certs.key,
-        cert: certs.cert,
+        key: certs!.key,
+        cert: certs!.cert,
       });
 
       tlsSocket.on('secure', () => {
@@ -210,7 +210,7 @@ export function startImapProxy(): net.Server {
           if (/^\S+ CAPABILITY/i.test(str)) {
             const tag = str.split(' ')[0];
             const caps = ['IMAP4rev1', 'AUTH=PLAIN', 'LOGIN'];
-            if (!(sock instanceof tls.TLSSocket)) caps.push('STARTTLS');
+            if (!(sock instanceof tls.TLSSocket) && certs) caps.push('STARTTLS');
             clientSocket.write(`* CAPABILITY ${caps.join(' ')}\r\n${tag} OK CAPABILITY completed\r\n`);
             return;
           }
@@ -218,6 +218,10 @@ export function startImapProxy(): net.Server {
           // STARTTLS
           if (/^\S+ STARTTLS/i.test(str)) {
             const tag = str.split(' ')[0];
+            if (!certs) {
+              clientSocket.write(`${tag} BAD STARTTLS unavailable\r\n`);
+              return;
+            }
             handleStartTls(tag);
             return;
           }

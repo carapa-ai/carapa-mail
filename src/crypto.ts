@@ -98,25 +98,54 @@ export function verifyPassword(password: string, stored: string): boolean {
 }
 
 /**
- * Ensures self-signed TLS certificates exist for STARTTLS.
- * Returns { key: string, cert: string }
+ * Checks if TLS requirements are met. Returns ok:true if certs exist or can be generated.
  */
-export function getTlsCertificate(): { key: string; cert: string } {
+export function checkTlsRequirements(): { ok: boolean; message?: string } {
   const keyPath = TLS_KEY_PATH || path.join(STORE_DIR, 'server.key');
   const certPath = TLS_CERT_PATH || path.join(STORE_DIR, 'server.cert');
 
   if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
-    return {
-      key: fs.readFileSync(keyPath, 'utf-8'),
-      cert: fs.readFileSync(certPath, 'utf-8'),
-    };
+    return { ok: true };
   }
 
   if (TLS_CERT_PATH || TLS_KEY_PATH) {
-    throw new Error(`Configured TLS paths not found: ${keyPath} or ${certPath}`);
+    return { ok: false, message: `Configured TLS paths not found: ${keyPath} or ${certPath}` };
   }
 
-  console.log('[crypto] Generating self-signed TLS certificate...');
+  try {
+    execSync('openssl version', { stdio: 'ignore' });
+    return { ok: true };
+  } catch {
+    return {
+      ok: false,
+      message: 'OpenSSL not found in PATH. Required to generate self-signed certificates for STARTTLS. Please install OpenSSL or provide your own certificates via TLS_CERT_PATH and TLS_KEY_PATH.'
+    };
+  }
+}
+
+/**
+ * Ensures self-signed TLS certificates exist for STARTTLS.
+ * Returns { key: string, cert: string } or null if unavailable.
+ */
+export function getTlsCertificate(): { key: string; cert: string } | null {
+  const keyPath = TLS_KEY_PATH || path.join(STORE_DIR, 'server.key');
+  const certPath = TLS_CERT_PATH || path.join(STORE_DIR, 'server.cert');
+
+  if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+    try {
+      return {
+        key: fs.readFileSync(keyPath, 'utf-8'),
+        cert: fs.readFileSync(certPath, 'utf-8'),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  if (TLS_CERT_PATH || TLS_KEY_PATH) {
+    return null;
+  }
+
   try {
     execSync(
       `openssl req -x509 -newkey rsa:2048 -keyout "${keyPath}" -out "${certPath}" -days 3650 -nodes -subj "/CN=localhost"`,
@@ -127,7 +156,6 @@ export function getTlsCertificate(): { key: string; cert: string } {
       cert: fs.readFileSync(certPath, 'utf-8'),
     };
   } catch (err) {
-    console.error('[crypto] Failed to generate TLS cert with openssl. STARTTLS might be unavailable.', err);
-    throw new Error('TLS certificate generation failed');
+    return null;
   }
 }

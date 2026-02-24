@@ -12,23 +12,22 @@ export function startSmtpServer(): SMTPServer {
   const accounts = getAllAccounts();
   const certs = getTlsCertificate();
 
+  const baseOptions: any = {
+    secure: false,
+    key: certs?.key,
+    cert: certs?.cert,
+    disabledCommands: certs ? [] : ['STARTTLS']
+  };
+
   if (accounts.length === 0) {
     logger.info('smtp', 'No accounts configured, SMTP proxy disabled');
-    const server = new SMTPServer({
-      secure: false,
-      key: certs.key,
-      cert: certs.cert,
-      disabledCommands: []
-    });
+    const server = new SMTPServer(baseOptions);
     return server;
   }
 
   const server = new SMTPServer({
-    secure: false,
+    ...baseOptions,
     authOptional: false,
-    key: certs.key,
-    cert: certs.cert,
-    disabledCommands: [],
     allowInsecureAuth: true,
     size: 25 * 1024 * 1024,
     onData(stream, session, callback) {
