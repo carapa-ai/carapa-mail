@@ -68,11 +68,21 @@ The scanner is the first line of defense — it catches spam before the client p
 # Install dependencies
 bun install
 
-# (Optional) Set your Claude API key for AI filtering
-echo 'ANTHROPIC_AUTH_TOKEN=sk-ant-...' > .env
-
 # Run
-bun run start
+bun run dev
+```
+
+CarapaMail works with **Anthropic Claude** or any **local model** (Ollama, vLLM, LM Studio, llama.cpp).
+
+**Cloud (Anthropic Claude):**
+```bash
+echo 'ANTHROPIC_AUTH_TOKEN=sk-ant-...' > .env
+```
+
+**Local model — no API key needed, data stays on your machine:**
+```bash
+echo 'ANTHROPIC_BASE_URL=http://localhost:11434/v1' > .env
+echo 'ANTHROPIC_MODEL=qwen2.5:14b' >> .env
 ```
 
 Open **http://localhost:3200/setup** to manage accounts. Then point your mail client at:
