@@ -200,7 +200,7 @@ const routes: { method: string; pattern: RegExp; handler: RouteHandler }[] = [
         imap: { host: a.imap.host, port: a.imap.port, user: a.imap.user },
         smtp: { host: a.smtp.host, port: a.smtp.port, user: a.smtp.user, secure: a.smtp.secure },
         inboundEnabled: a.inboundEnabled, outboundEnabled: a.outboundEnabled,
-        mcpReceiveEnabled: a.mcpReceiveEnabled, mcpSendEnabled: a.mcpSendEnabled,
+        mcpReceiveEnabled: a.mcpReceiveEnabled, mcpSendEnabled: a.mcpSendEnabled, mcpDeleteEnabled: a.mcpDeleteEnabled,
         mcpTokenSet: a.mcpTokenSet,
         customInboundPrompt: a.customInboundPrompt, customOutboundPrompt: a.customOutboundPrompt, customAgentPrompt: a.customAgentPrompt,
         customInboundPromptMode: a.customInboundPromptMode, customOutboundPromptMode: a.customOutboundPromptMode, customAgentPromptMode: a.customAgentPromptMode,
@@ -259,6 +259,7 @@ const routes: { method: string; pattern: RegExp; handler: RouteHandler }[] = [
         outboundEnabled: body.outboundEnabled,
         mcpReceiveEnabled: body.mcpReceiveEnabled,
         mcpSendEnabled: body.mcpSendEnabled,
+        mcpDeleteEnabled: body.mcpDeleteEnabled,
         mcpToken: body.mcpToken,
       };
 

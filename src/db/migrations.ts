@@ -138,6 +138,16 @@ const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 9,
+    description: 'Add mcp_delete_enabled column',
+    up: async (adapter, dialect) => {
+      const ifNotExists = dialect === 'postgres' ? ' IF NOT EXISTS' : '';
+      try {
+        await adapter.exec(`ALTER TABLE accounts ADD COLUMN${ifNotExists} mcp_delete_enabled INTEGER NOT NULL DEFAULT 0;`);
+      } catch { }
+    },
+  },
 ];
 
 /**

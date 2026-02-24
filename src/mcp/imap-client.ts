@@ -36,7 +36,7 @@ function createClient(account: Account): ImapFlow {
   return client;
 }
 
-export type McpMode = 'receive' | 'send';
+export type McpMode = 'receive' | 'send' | 'delete';
 
 /**
  * Resolve an account identifier (ID or email) to an Account.
@@ -47,12 +47,12 @@ export function resolveAccount(accountIdOrEmail?: string, mode?: McpMode): Accou
   if (!accountIdOrEmail) {
     if (!mode) return getAllAccounts()[0];
     return getAllAccounts().find(a =>
-      mode === 'send' ? a.mcpSendEnabled : a.mcpReceiveEnabled,
+      mode === 'send' ? a.mcpSendEnabled : mode === 'delete' ? a.mcpDeleteEnabled : a.mcpReceiveEnabled,
     );
   }
   const account = getAccountById(accountIdOrEmail) || getAccountByEmail(accountIdOrEmail);
   if (!account || !mode) return account;
-  const allowed = mode === 'send' ? account.mcpSendEnabled : account.mcpReceiveEnabled;
+  const allowed = mode === 'send' ? account.mcpSendEnabled : mode === 'delete' ? account.mcpDeleteEnabled : account.mcpReceiveEnabled;
   if (!allowed) return undefined;
   return account;
 }

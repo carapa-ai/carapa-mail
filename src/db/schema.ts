@@ -91,6 +91,7 @@ export function getCreateTablesSql(dialect: Dialect): string {
       outbound_enabled INTEGER NOT NULL DEFAULT 1,
       mcp_receive_enabled INTEGER NOT NULL DEFAULT 1,
       mcp_send_enabled INTEGER NOT NULL DEFAULT 0,
+      mcp_delete_enabled INTEGER NOT NULL DEFAULT 0,
       custom_inbound_prompt TEXT NOT NULL DEFAULT '',
       custom_outbound_prompt TEXT NOT NULL DEFAULT '',
       custom_agent_prompt TEXT NOT NULL DEFAULT '',

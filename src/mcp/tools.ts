@@ -34,7 +34,7 @@ function makeRequireAccount(allowedAccountIds: string[]) {
   return function requireAccount(accountParam: string | undefined, mode: McpMode) {
     const acc = resolveAccount(accountParam, mode);
     if (!acc) {
-      const label = mode === 'send' ? 'MCP send' : 'MCP receive';
+      const label = mode === 'send' ? 'MCP send' : mode === 'delete' ? 'MCP delete' : 'MCP receive';
       const msg = accountParam
         ? `${label} access disabled for account '${accountParam}'. Enable it in the setup UI.`
         : `No accounts with ${label} enabled.`;
@@ -63,7 +63,7 @@ export function registerTools(s: McpServer, allowedAccountIds: string[]) {
     async () => {
       try {
         const accounts = getAllAccounts()
-          .filter(a => allowedAccountIds.includes(a.id) && (a.mcpReceiveEnabled || a.mcpSendEnabled))
+          .filter(a => allowedAccountIds.includes(a.id) && (a.mcpReceiveEnabled || a.mcpSendEnabled || a.mcpDeleteEnabled))
           .map(a => ({
             id: a.id,
             email: a.email,
@@ -71,6 +71,7 @@ export function registerTools(s: McpServer, allowedAccountIds: string[]) {
             smtp_host: a.smtp.host,
             mcp_receive: a.mcpReceiveEnabled,
             mcp_send: a.mcpSendEnabled,
+            mcp_delete: a.mcpDeleteEnabled,
           }));
         return text(accounts);
       } catch (e: any) {
@@ -401,7 +402,7 @@ export function registerTools(s: McpServer, allowedAccountIds: string[]) {
     async (args: { uids: number[]; folder?: string; account?: string }) => {
       try {
         if (args.uids.length === 0) return error('No UIDs provided');
-        const { account: acc, err } = requireAccount(args.account, 'receive');
+        const { account: acc, err } = requireAccount(args.account, 'delete');
         if (err) return err;
         const count = await deleteMessages(args.folder || 'INBOX', args.uids, acc.id);
         return text({ deleted: count, folder: args.folder || 'INBOX' });

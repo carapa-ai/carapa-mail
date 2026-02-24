@@ -41,6 +41,7 @@ export interface Account {
   outboundEnabled: boolean;
   mcpReceiveEnabled: boolean;
   mcpSendEnabled: boolean;
+  mcpDeleteEnabled: boolean;
   customInboundPrompt: string;
   customOutboundPrompt: string;
   customAgentPrompt: string;
@@ -90,6 +91,7 @@ function rowToAccount(row: AccountRow): Account {
     outboundEnabled: row.outbound_enabled !== 0,
     mcpReceiveEnabled: row.mcp_receive_enabled !== 0,
     mcpSendEnabled: row.mcp_send_enabled !== 0,
+    mcpDeleteEnabled: row.mcp_delete_enabled !== 0,
     customInboundPrompt: row.custom_inbound_prompt || '',
     customOutboundPrompt: row.custom_outbound_prompt || '',
     customAgentPrompt: row.custom_agent_prompt || '',
@@ -166,6 +168,7 @@ export interface AccountInput {
   outboundEnabled?: boolean;
   mcpReceiveEnabled?: boolean;
   mcpSendEnabled?: boolean;
+  mcpDeleteEnabled?: boolean;
   customInboundPrompt?: string;
   customOutboundPrompt?: string;
   customAgentPrompt?: string;
@@ -195,6 +198,7 @@ export async function addAccount(input: AccountInput): Promise<Account> {
     outbound_enabled: input.outboundEnabled !== false ? 1 : 0,
     mcp_receive_enabled: input.mcpReceiveEnabled !== false ? 1 : 0,
     mcp_send_enabled: input.mcpSendEnabled === true ? 1 : 0,
+    mcp_delete_enabled: input.mcpDeleteEnabled === true ? 1 : 0,
     custom_inbound_prompt: input.customInboundPrompt || '',
     custom_outbound_prompt: input.customOutboundPrompt || '',
     custom_agent_prompt: input.customAgentPrompt || '',
@@ -233,6 +237,7 @@ export async function updateAccount(id: string, input: Partial<AccountInput>): P
   if (input.outboundEnabled !== undefined) updates.outbound_enabled = input.outboundEnabled ? 1 : 0;
   if (input.mcpReceiveEnabled !== undefined) updates.mcp_receive_enabled = input.mcpReceiveEnabled ? 1 : 0;
   if (input.mcpSendEnabled !== undefined) updates.mcp_send_enabled = input.mcpSendEnabled ? 1 : 0;
+  if (input.mcpDeleteEnabled !== undefined) updates.mcp_delete_enabled = input.mcpDeleteEnabled ? 1 : 0;
   if (input.customInboundPrompt !== undefined) updates.custom_inbound_prompt = input.customInboundPrompt;
   if (input.customOutboundPrompt !== undefined) updates.custom_outbound_prompt = input.customOutboundPrompt;
   if (input.customAgentPrompt !== undefined) updates.custom_agent_prompt = input.customAgentPrompt;

@@ -49,6 +49,7 @@ export interface AccountRow {
   outbound_enabled: number;
   mcp_receive_enabled: number;
   mcp_send_enabled: number;
+  mcp_delete_enabled: number;
   custom_inbound_prompt: string;
   custom_outbound_prompt: string;
   custom_agent_prompt: string;
@@ -75,9 +76,9 @@ export async function getAccountRowByEmail(email: string): Promise<AccountRow | 
 
 export async function insertAccount(row: AccountRow): Promise<void> {
   await adapter.run(
-    `INSERT INTO accounts (id, email, imap_host, imap_port, imap_user, imap_pass_enc, smtp_host, smtp_port, smtp_user, smtp_pass_enc, smtp_secure, local_pass_enc, inbound_enabled, outbound_enabled, mcp_receive_enabled, mcp_send_enabled, custom_inbound_prompt, custom_outbound_prompt, custom_agent_prompt, use_custom_inbound_prompt, use_custom_outbound_prompt, use_custom_agent_prompt, mcp_token_hash, strict_tls, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [row.id, row.email, row.imap_host, row.imap_port, row.imap_user, row.imap_pass_enc, row.smtp_host, row.smtp_port, row.smtp_user, row.smtp_pass_enc, row.smtp_secure, row.local_pass_enc, row.inbound_enabled, row.outbound_enabled, row.mcp_receive_enabled, row.mcp_send_enabled, row.custom_inbound_prompt, row.custom_outbound_prompt, row.custom_agent_prompt, row.use_custom_inbound_prompt, row.use_custom_outbound_prompt, row.use_custom_agent_prompt, row.mcp_token_hash, row.strict_tls, row.created_at, row.updated_at],
+    `INSERT INTO accounts (id, email, imap_host, imap_port, imap_user, imap_pass_enc, smtp_host, smtp_port, smtp_user, smtp_pass_enc, smtp_secure, local_pass_enc, inbound_enabled, outbound_enabled, mcp_receive_enabled, mcp_send_enabled, mcp_delete_enabled, custom_inbound_prompt, custom_outbound_prompt, custom_agent_prompt, use_custom_inbound_prompt, use_custom_outbound_prompt, use_custom_agent_prompt, mcp_token_hash, strict_tls, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [row.id, row.email, row.imap_host, row.imap_port, row.imap_user, row.imap_pass_enc, row.smtp_host, row.smtp_port, row.smtp_user, row.smtp_pass_enc, row.smtp_secure, row.local_pass_enc, row.inbound_enabled, row.outbound_enabled, row.mcp_receive_enabled, row.mcp_send_enabled, row.mcp_delete_enabled, row.custom_inbound_prompt, row.custom_outbound_prompt, row.custom_agent_prompt, row.use_custom_inbound_prompt, row.use_custom_outbound_prompt, row.use_custom_agent_prompt, row.mcp_token_hash, row.strict_tls, row.created_at, row.updated_at],
   );
 }
 

@@ -555,6 +555,7 @@ function render() {
         ${a.outboundEnabled ? '<span class="badge badge-ok">Outbound</span>' : '<span class="badge badge-err">Outbound off</span>'}
         ${a.mcpReceiveEnabled ? '<span class="badge badge-ok">MCP read</span>' : '<span class="badge badge-err">MCP read off</span>'}
         ${a.mcpSendEnabled ? '<span class="badge badge-ok">MCP send</span>' : '<span class="badge badge-pending">MCP send off</span>'}
+        ${a.mcpDeleteEnabled ? '<span class="badge badge-ok">MCP delete</span>' : '<span class="badge badge-pending">MCP delete off</span>'}
         ${a.mcpTokenSet ? '<span class="badge badge-ok">Token set</span>' : '<span class="badge badge-err">No token</span>'}
       </div>
       <div class="actions">
@@ -623,6 +624,7 @@ function showEditForm(id) {
   document.getElementById('f-outboundEnabled').checked = acc.outboundEnabled !== false;
   document.getElementById('f-mcpReceiveEnabled').checked = acc.mcpReceiveEnabled !== false;
   document.getElementById('f-mcpSendEnabled').checked = acc.mcpSendEnabled === true;
+  document.getElementById('f-mcpDeleteEnabled').checked = acc.mcpDeleteEnabled === true;
   document.getElementById('f-mcpToken').value = '';
   document.getElementById('f-mcpTokenStatus').textContent = acc.mcpTokenSet ? 'Token is set. Leave blank to keep, or enter a new one.' : 'No token set.';
   document.getElementById('form-error').textContent = '';
@@ -651,6 +653,7 @@ async function handleSubmit(e) {
   data.outboundEnabled = document.getElementById('f-outboundEnabled').checked;
   data.mcpReceiveEnabled = document.getElementById('f-mcpReceiveEnabled').checked;
   data.mcpSendEnabled = document.getElementById('f-mcpSendEnabled').checked;
+  data.mcpDeleteEnabled = document.getElementById('f-mcpDeleteEnabled').checked;
   const mcpToken = document.getElementById('f-mcpToken').value;
   if (mcpToken) data.mcpToken = mcpToken;
   const submitBtn = document.getElementById('form-submit');
