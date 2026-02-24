@@ -12,6 +12,32 @@ import { logger } from '../logger.js';
 
 let client: Anthropic | null = null;
 
+/**
+ * Concurrency limiter for AI requests.
+ * Local models (Ollama, llama.cpp) crash under concurrent requests.
+ * Controlled via MAX_PARALLEL_AI_CALLS (default 1 = serial).
+ */
+let aiRunning = 0;
+const aiWaiters: (() => void)[] = [];
+
+function enqueue<T>(fn: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const run = () => {
+      aiRunning++;
+      fn().then(resolve, reject).finally(() => {
+        aiRunning--;
+        if (aiWaiters.length > 0) aiWaiters.shift()!();
+      });
+    };
+
+    if (aiRunning < config.MAX_PARALLEL_AI_CALLS) {
+      run();
+    } else {
+      aiWaiters.push(run);
+    }
+  });
+}
+
 function getClient(): Anthropic {
   if (!client) {
     client = new Anthropic({
@@ -270,23 +296,24 @@ export async function checkModelConnection(): Promise<{ ok: boolean; message: st
 }
 
 /** Analyze a single content chunk and return a FilterDecision. */
-async function analyzeChunk(content: string, filterContext: FilterContext, accountId?: string): Promise<FilterDecision> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), config.FILTER_TIMEOUT);
+function analyzeChunk(content: string, filterContext: FilterContext, accountId?: string): Promise<FilterDecision> {
+  return enqueue(async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), config.FILTER_TIMEOUT);
 
-  const isAnthropicApi = config.ANTHROPIC_BASE_URL.includes('anthropic.com');
-  const response = await getClient().messages.create(
-    {
-      model: config.ANTHROPIC_MODEL,
-      max_tokens: 1024,
-      ...(isAnthropicApi ? { thinking: { type: 'disabled' as const } } : {}),
-      system: getFilterPrompt(filterContext, accountId),
-      messages: [{ role: 'user', content }],
-    },
-    { signal: controller.signal },
-  );
+    const isAnthropicApi = config.ANTHROPIC_BASE_URL.includes('anthropic.com');
+    const response = await getClient().messages.create(
+      {
+        model: config.ANTHROPIC_MODEL,
+        max_tokens: 1024,
+        ...(isAnthropicApi ? { thinking: { type: 'disabled' as const } } : {}),
+        system: getFilterPrompt(filterContext, accountId),
+        messages: [{ role: 'user', content }],
+      },
+      { signal: controller.signal },
+    );
 
-  clearTimeout(timeout);
+    clearTimeout(timeout);
 
   const text = response.content.find(block => block.type === 'text');
   if (!text || text.type !== 'text') throw new Error(`AI returned no text block (got ${response.content.length} blocks: ${response.content.map(b => b.type).join(', ') || 'empty'})`);
@@ -305,6 +332,7 @@ async function analyzeChunk(content: string, filterContext: FilterContext, accou
     categories: Array.isArray(parsed.categories) ? parsed.categories : [],
     move_to: typeof parsed.move_to === 'string' ? parsed.move_to : undefined,
   };
+  });
 }
 
 export async function inspectEmail(email: EmailSummary, contextOverride?: FilterContext, accountId?: string): Promise<FilterDecision> {

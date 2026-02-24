@@ -182,7 +182,8 @@ Accounts are managed through the setup UI at `/setup` (or via the `/api/accounts
 | `ANTHROPIC_MODEL` | `claude-haiku-4-5-20251001` | Model for filtering. Haiku is recommended for low latency and cost |
 | `ENCRYPTION_KEY` | (auto-generated) | 32-byte hex key for AES-256-GCM password encryption. If not set, a key is generated at `store/.encryption-key` (mode 0600). **Back this up** — if lost, all stored passwords are unrecoverable |
 | `FILTER_CONFIDENCE_THRESHOLD` | `0.7` | Below this confidence score, quarantine instead of hard-reject |
-| `FILTER_TIMEOUT` | `5000` | AI API call timeout (ms) |
+| `FILTER_TIMEOUT` | `30000` | AI API call timeout (ms). Local models need more time than cloud APIs |
+| `MAX_PARALLEL_AI_CALLS` | `1` | Max concurrent AI requests. `1` = serial (safe for local models like Ollama/llama.cpp). Increase for cloud APIs |
 | `AGENT_CHUNK_TOKENS` | `0` | If > 0, large emails are split into chunks of ~N tokens for independent analysis (e.g. `4000`) |
 | `AI_FAIL_ACTION` | `reject` | Action if AI call fails. `reject` (block, default), `passthrough` (allow), or `quarantine` (move to Spam) |
 | `AUTO_QUARANTINE` | `true` | `false` = log-only passthrough mode (sanitizes but does not block) |
