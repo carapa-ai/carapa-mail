@@ -147,9 +147,11 @@ export function getTlsCertificate(): { key: string; cert: string } | null {
   }
 
   try {
-    const subj = PUBLIC_HOSTNAME ? `/CN=${PUBLIC_HOSTNAME}` : '/CN=localhost';
+    const hostname = PUBLIC_HOSTNAME || 'localhost';
+    const subj = `/CN=${hostname}`;
+    const san = `subjectAltName=DNS:${hostname},IP:127.0.0.1`;
     execSync(
-      `openssl req -x509 -newkey rsa:2048 -keyout "${keyPath}" -out "${certPath}" -days 3650 -nodes -subj "${subj}"`,
+      `openssl req -x509 -newkey rsa:2048 -keyout "${keyPath}" -out "${certPath}" -days 3650 -nodes -subj "${subj}" -addext "${san}"`,
       { stdio: 'pipe' }
     );
     return {

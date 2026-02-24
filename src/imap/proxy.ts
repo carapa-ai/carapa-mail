@@ -24,17 +24,22 @@ export function startImapProxy(): net.Server {
   const implicitTlsServer = certs ? tls.createServer({
     key: certs.key,
     cert: certs.cert,
+    requestCert: false,
+    minVersion: 'TLSv1.2' as any,
   }) : null;
 
   if (implicitTlsServer) {
     implicitTlsServer.on('secureConnection', (tlsSocket: tls.TLSSocket) => {
       const clientIp = tlsSocket.remoteAddress || 'unknown';
       const clientAddr = `${clientIp}:${tlsSocket.remotePort}`;
-      logger.info('imap', `Implicit TLS secured for ${clientAddr}`);
+      const cipher = tlsSocket.getCipher();
+      const protocol = tlsSocket.getProtocol();
+      logger.info('imap', `Implicit TLS secured for ${clientAddr} (${protocol}, ${cipher?.name})`);
       setupImapSession(tlsSocket, clientIp, clientAddr, true);
     });
-    implicitTlsServer.on('tlsClientError', (err, tlsSocket) => {
-      logger.error('imap', `Implicit TLS client error: ${err.message}`);
+    implicitTlsServer.on('tlsClientError', (err: any, tlsSocket) => {
+      logger.error('imap', `Implicit TLS client error: ${err.message} (code: ${err.code || 'unknown'})`);
+      logger.debug('imap', `TLS error details: ${JSON.stringify({ code: err.code, reason: err.reason, library: err.library })}`);
       tlsSocket.destroy();
     });
     implicitTlsServer.listen(0, '127.0.0.1');
@@ -70,8 +75,19 @@ export function startImapProxy(): net.Server {
         internal.on('connect', () => {
           logger.debug('imap', `Internal TLS connection established for ${clientAddr}`);
           internal.write(data);
-          socket.pipe(internal);
-          internal.pipe(socket);
+
+          // Explicit bidirectional forwarding (instead of pipe) for debugging
+          internal.on('data', (chunk) => {
+            logger.debug('imap', `[internal→client] ${chunk.length} bytes for ${clientAddr}`);
+            socket.write(chunk);
+          });
+          socket.on('data', (chunk) => {
+            logger.debug('imap', `[client→internal] ${chunk.length} bytes for ${clientAddr}`);
+            internal.write(chunk);
+          });
+
+          internal.on('end', () => socket.end());
+          socket.on('end', () => internal.end());
         });
         internal.on('error', (err) => {
           logger.error('imap', `Internal TLS proxy error for ${clientAddr}: ${err.message}`);
@@ -138,12 +154,35 @@ function setupImapSession(
   let awaitingPlainContinuation = false;
   let authenticateTag = '';
 
-  // Send IMAP greeting
-  clientSocket.write('* OK CarapaMail IMAP proxy ready\r\n');
-  logger.debug('imap', `[P->C]: * OK CarapaMail IMAP proxy ready`);
+  // Delay greeting slightly — TLSv1.3 needs a tick to finish post-handshake
+  // processing (session tickets) before application data can flow
+  function getCapabilities(): string[] {
+    const caps = ['IMAP4rev1'];
+    if (!isSecure && certs) {
+      // RFC 3501: MUST advertise LOGINDISABLED when not encrypted
+      caps.push('STARTTLS', 'LOGINDISABLED');
+    } else {
+      // Only advertise auth methods over a secure connection
+      caps.push('AUTH=PLAIN', 'SASL-IR');
+    }
+    caps.push('ID', 'IDLE', 'NAMESPACE');
+    return caps;
+  }
 
-  // Attach the IMAP command handler
-  attachDataListener(clientSocket);
+  setImmediate(() => {
+    const greeting = '* OK CarapaMail IMAP proxy ready';
+    logger.debug('imap', `[P->C]: ${greeting}`);
+    clientSocket.write(greeting + '\r\n', (err) => {
+      if (err) {
+        logger.error('imap', `Greeting write error for ${clientAddr}: ${err.message}`);
+      } else {
+        logger.debug('imap', `Greeting flushed OK for ${clientAddr}`);
+      }
+    });
+
+    // Attach the IMAP command handler
+    attachDataListener(clientSocket);
+  });
 
   function connectUpstream(acc: Account): Promise<tls.TLSSocket> {
     return new Promise((resolve, reject) => {
@@ -376,8 +415,7 @@ function setupImapSession(
     // CAPABILITY
     if (/^\S+ CAPABILITY/i.test(str)) {
       const tag = str.split(' ')[0];
-      const caps = ['IMAP4rev1', 'AUTH=PLAIN', 'LOGIN'];
-      const response = `* CAPABILITY ${caps.join(' ')}\r\n${tag} OK CAPABILITY completed\r\n`;
+      const response = `* CAPABILITY ${getCapabilities().join(' ')}\r\n${tag} OK CAPABILITY completed\r\n`;
       logger.debug('imap', `[P->C]: ${response.trim()}`);
       clientSocket.write(response);
       return;
@@ -402,9 +440,20 @@ function setupImapSession(
       return;
     }
 
+    // ID (RFC 2971) — Thunderbird sends this during autoconfig
+    if (/^\S+ ID /i.test(str)) {
+      const tag = str.split(' ')[0];
+      clientSocket.write(`* ID ("name" "CarapaMail" "version" "1.0")\r\n${tag} OK ID completed\r\n`);
+      return;
+    }
+
     // LOGIN: TAG LOGIN "user" "pass"
     if (/^\S+ LOGIN /i.test(str)) {
       const tag = str.split(' ')[0];
+      if (!isSecure && certs) {
+        clientSocket.write(`${tag} NO [PRIVACYREQUIRED] STARTTLS required before login\r\n`);
+        return;
+      }
       const loginMatch = str.match(/^\S+ LOGIN\s+(?:"((?:[^"\\]|\\.)*)"|(\S+))\s+(?:"((?:[^"\\]|\\.)*)"|(\S+))/i);
       const email = loginMatch ? (loginMatch[1] ?? loginMatch[2] ?? '').replace(/\\(.)/g, '$1') : '';
       const password = loginMatch ? (loginMatch[3] ?? loginMatch[4] ?? '').replace(/\\(.)/g, '$1') : '';
@@ -416,6 +465,10 @@ function setupImapSession(
     if (/^\S+ AUTHENTICATE PLAIN/i.test(str)) {
       const parts = str.trim().split(/\s+/);
       authenticateTag = parts[0];
+      if (!isSecure && certs) {
+        clientSocket.write(`${authenticateTag} NO [PRIVACYREQUIRED] STARTTLS required before authentication\r\n`);
+        return;
+      }
       if (parts.length > 3) {
         // Inline: TAG AUTHENTICATE PLAIN <base64>
         const decoded = Buffer.from(parts[3], 'base64').toString('utf-8');

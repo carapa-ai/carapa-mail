@@ -13,11 +13,11 @@ export function startSmtpServer(): SMTPServer {
   const certs = getTlsCertificate();
 
   const server = new SMTPServer({
-    secure: true,
+    secure: false,
     key: certs?.key,
     cert: certs?.cert,
     authOptional: false,
-    allowInsecureAuth: true,
+    allowInsecureAuth: false,
     size: 25 * 1024 * 1024,
     logger: LOG_LEVEL === 'debug',
     onConnect(session, callback) {
