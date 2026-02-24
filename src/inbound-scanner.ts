@@ -14,7 +14,7 @@ import { randomUUID } from 'crypto';
 import { logger } from './logger.js';
 
 const FOLDER = 'INBOX';
-const SPAM_FOLDER = 'Spam';
+const SPAM_FOLDER = 'Junk';
 
 function formatAddress(addrs?: { name?: string; address?: string }[]): string {
   if (!addrs?.length) return '';
