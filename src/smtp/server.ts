@@ -17,7 +17,7 @@ export function startSmtpServer(): SMTPServer {
     key: certs?.key,
     cert: certs?.cert,
     authOptional: false,
-    allowInsecureAuth: false,
+    allowInsecureAuth: true,
     size: 25 * 1024 * 1024,
     logger: LOG_LEVEL === 'debug',
     onConnect(session, callback) {
