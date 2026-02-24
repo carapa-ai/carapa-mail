@@ -361,6 +361,18 @@ export async function recordScan(folder: string, uid: number, uidValidity: numbe
   );
 }
 
+/**
+ * Delete scan records for UIDs at or below a threshold.
+ * Called after the scanner advances its baseline — older records are dead weight.
+ */
+export async function pruneScans(folder: string, belowUid: number, uidValidity: number, context = 'inbound', accountId = 'default'): Promise<number> {
+  const result = await adapter.run(
+    `DELETE FROM message_scans WHERE account_id = ? AND folder = ? AND uid_validity = ? AND context = ? AND uid <= ?`,
+    [accountId, folder, uidValidity, context, belowUid],
+  );
+  return (result as any)?.changes ?? 0;
+}
+
 // --- Stats ---
 
 export async function getStats(accountId?: string): Promise<{ total: number; passed: number; rejected: number; quarantined: number; pending_quarantine: number }> {

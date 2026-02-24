@@ -173,9 +173,10 @@ Accounts are managed through the setup UI at `/setup` (or via the `/api/accounts
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SMTP_PORT` | `2525` | Local SMTP proxy port (binds to localhost only in Docker) |
-| `IMAP_PROXY_PORT` | `1993` | Local IMAP proxy port (binds to localhost only in Docker) |
-| `HTTP_PORT` | `3200` | Admin API + setup UI port |
+| `SMTP_PORT` | `2525` | Local SMTP proxy port |
+| `IMAP_PROXY_PORT` | `1993` | Local IMAP proxy port |
+| `HTTP_PORT` | `3200` | Admin UI + API port |
+| `BIND_HOST` | `127.0.0.1` | Address to bind SMTP, IMAP, and HTTP servers to. Set to `0.0.0.0` to accept connections from the local network |
 | `AI_FEATURES_ENABLED` | `true` | Master toggle for all AI filtering. If `false`, all AI logic is bypassed (lite/non-AI mode) |
 | `ANTHROPIC_AUTH_TOKEN` | — | LLM API key (required for AI filtering) |
 | `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | API base URL. Override to use a local proxy or alternative endpoint |

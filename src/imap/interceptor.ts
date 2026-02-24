@@ -6,7 +6,7 @@ import { scanAuthenticity } from '../email/authenticity.js';
 import { toEmailSummary } from '../email/parser.js';
 import { inspectEmail } from '../agent/filter.js';
 import { getScan, getScannerState, recordScan, logAudit, getMatchingRules } from '../db/index.js';
-import { FILTER_CONFIDENCE_THRESHOLD } from '../config.js';
+import { FILTER_CONFIDENCE_THRESHOLD, INCOMING_FOLDER } from '../config.js';
 import type { EmailSummary, FolderPolicy, FolderContext } from '../types.js';
 import { simpleParser } from 'mailparser';
 
@@ -29,6 +29,14 @@ function getFolderPolicy(folder: string): FolderPolicy {
   // Trash: Minimal
   if (name.includes('trash') || name.includes('bin')) {
     return { level: 'minimal', skipAi: true, skipSanitization: true, autoQuarantine: false };
+  }
+
+  // Incoming: Messages awaiting scan — block all body content.
+  // The inbound scanner moves new mail here before scanning, then routes
+  // to INBOX (or other folders) once cleared.  Clients should never see
+  // raw content from this folder.
+  if (name === INCOMING_FOLDER.toLowerCase()) {
+    return { level: 'strict', skipAi: false, skipSanitization: false, autoQuarantine: false };
   }
 
   // INBOX: Strict AI and sanitization

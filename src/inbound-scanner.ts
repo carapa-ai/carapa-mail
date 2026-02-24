@@ -1,12 +1,13 @@
 // Required Notice: Copyright Regun Software SRL (https://carapa.ai)
 
-import { ImapFlow } from 'imapflow';
+import { ImapFlow, CopyResponseObject } from 'imapflow';
 import {
   AUTO_QUARANTINE,
   FILTER_CONFIDENCE_THRESHOLD,
   INBOUND_SCAN_INTERVAL,
+  INCOMING_FOLDER,
 } from './config.js';
-import { getScannerState, setScannerState, logAudit, getMatchingRules, insertQuarantine, recordScan, isWhitelisted } from './db/index.js';
+import { getScannerState, setScannerState, logAudit, getMatchingRules, insertQuarantine, recordScan, getScan, pruneScans, isWhitelisted } from './db/index.js';
 import { inspectEmail } from './agent/filter.js';
 import { getAllAccounts, type Account } from './accounts.js';
 import type { FilterDecision, EmailSummary } from './types.js';
@@ -85,12 +86,25 @@ async function ensureFolder(c: ImapFlow, folder: string, knownFolders: Set<strin
       logger.warn('scanner', `Could not create folder "${folder}": ${e.message}`);
     }
   }
+  try {
+    await c.mailboxSubscribe(folder);
+  } catch {
+    // Not critical
+  }
   knownFolders.add(folder);
 }
 
-async function processMessage(loop: ScannerLoop, uid: number, uidValidity: number): Promise<void> {
+/**
+ * Scan a message in INBOX. Returns 'bounce' if the message passed and stays
+ * in INBOX (needs a UID refresh bounce), or null otherwise.
+ */
+async function processMessage(loop: ScannerLoop, uid: number, uidValidity: number): Promise<'bounce' | null> {
   const { client: c, account } = loop;
-  if (!c) return;
+  if (!c) return null;
+
+  // Skip if already scanned (e.g. bounced back from Incoming with a new UID)
+  const existing = await getScan(FOLDER, uid, uidValidity, 'inbound', account.id);
+  if (existing) return null;
 
   const msg = await c.fetchOne(String(uid), {
     envelope: true,
@@ -99,7 +113,7 @@ async function processMessage(loop: ScannerLoop, uid: number, uidValidity: numbe
     uid: true,
   }, { uid: true });
 
-  if (!msg) return;
+  if (!msg) return null;
 
   const from = formatAddress(msg.envelope?.from);
   const to = formatAddress(msg.envelope?.to);
@@ -178,8 +192,6 @@ async function processMessage(loop: ScannerLoop, uid: number, uidValidity: numbe
     accountId: account.id,
   });
 
-  await recordScan(FOLDER, uid, uidValidity, decision.action, decision.reason, 'inbound', account.id);
-
   const moveTarget = decision.move_to || undefined;
 
   logger.info('scanner',
@@ -194,6 +206,7 @@ async function processMessage(loop: ScannerLoop, uid: number, uidValidity: numbe
     } catch (e: any) {
       logger.error('scanner', `[${account.id}] Failed to move uid=${uid} to ${target}: ${e.message}`);
     }
+    await recordScan(FOLDER, uid, uidValidity, decision.action, decision.reason, 'inbound', account.id);
 
     if (decision.action === 'quarantine') {
       await insertQuarantine({
@@ -210,19 +223,31 @@ async function processMessage(loop: ScannerLoop, uid: number, uidValidity: numbe
         accountId: account.id,
       });
     }
-  } else if (decision.action === 'pass' && moveTarget) {
+    return null;
+  }
+
+  if (decision.action === 'pass' && moveTarget) {
     try {
       await ensureFolder(c, moveTarget, loop.knownFolders);
       await c.messageMove(String(uid), moveTarget, { uid: true });
     } catch (e: any) {
       logger.error('scanner', `[${account.id}] Failed to move uid=${uid} to ${moveTarget}: ${e.message}`);
     }
+    await recordScan(FOLDER, uid, uidValidity, decision.action, decision.reason, 'inbound', account.id);
+    return null;
   }
+
+  // Message passes and stays in INBOX — needs a UID bounce so clients refetch the body
+  await recordScan(FOLDER, uid, uidValidity, decision.action, decision.reason, 'inbound', account.id);
+  return 'bounce';
 }
 
 async function scanNewMessages(loop: ScannerLoop): Promise<void> {
   const { client, account } = loop;
   if (!client?.usable) return;
+
+  // Collect UIDs that need a bounce (passed, staying in INBOX)
+  const bouncePending: number[] = [];
 
   const lock = await client.getMailboxLock(FOLDER);
   try {
@@ -260,7 +285,8 @@ async function scanNewMessages(loop: ScannerLoop): Promise<void> {
     for (const uid of newUids) {
       if (loop.stopped) break;
       try {
-        await processMessage(loop, uid, uidValidity);
+        const result = await processMessage(loop, uid, uidValidity);
+        if (result === 'bounce') bouncePending.push(uid);
         lastProcessed = uid;
       } catch (e: any) {
         logger.error('scanner', `[${account.id}] Error processing uid=${uid}: ${e.message}`);
@@ -270,9 +296,58 @@ async function scanNewMessages(loop: ScannerLoop): Promise<void> {
 
     if (lastProcessed > startUid) {
       await setScannerState(FOLDER, uidValidity, lastProcessed, account.id);
+      // Prune old scan records for UIDs below the previous baseline
+      await pruneScans(FOLDER, startUid, uidValidity, 'inbound', account.id);
+    }
+
+    // Bounce: move passed messages to Incoming (still under INBOX lock)
+    if (bouncePending.length > 0) {
+      for (const uid of bouncePending) {
+        try {
+          await client.messageMove(String(uid), INCOMING_FOLDER, { uid: true });
+        } catch (e: any) {
+          logger.error('scanner', `[${account.id}] Bounce-out failed uid=${uid}: ${e.message}`);
+        }
+      }
     }
   } finally {
     lock.release();
+  }
+
+  // Bounce back: move everything from Incoming → INBOX to get fresh UIDs
+  if (bouncePending.length > 0) {
+    let incomingLock;
+    try {
+      incomingLock = await client.getMailboxLock(INCOMING_FOLDER);
+    } catch {
+      return;
+    }
+    try {
+      const searchResult = await client.search({ all: true }, { uid: true });
+      const incomingUids = Array.isArray(searchResult) ? searchResult : [];
+      for (const uid of incomingUids) {
+        try {
+          const moveResult = await client.messageMove(String(uid), FOLDER, { uid: true }) as CopyResponseObject | false;
+
+          // Record scan with the new INBOX UID so the interceptor and scanner skip it
+          if (moveResult && moveResult.uidMap) {
+            const newUid = moveResult.uidMap.get(uid);
+            const destUv = moveResult.uidValidity ? Number(moveResult.uidValidity) : 0;
+            if (newUid && destUv) {
+              await recordScan(FOLDER, newUid, destUv, 'pass', 'UID refresh after scan', 'inbound', account.id);
+            }
+          }
+        } catch (e: any) {
+          logger.error('scanner', `[${account.id}] Bounce-back failed uid=${uid}: ${e.message}`);
+        }
+      }
+
+      if (incomingUids.length > 0) {
+        logger.info('scanner', `[${account.id}] Bounced ${incomingUids.length} message(s) back to INBOX with fresh UIDs`);
+      }
+    } finally {
+      incomingLock.release();
+    }
   }
 }
 
@@ -283,6 +358,7 @@ async function runLoop(loop: ScannerLoop): Promise<void> {
         loop.client = createClient(loop.account);
         await loop.client.connect();
         logger.info('scanner', `[${loop.account.id}] Connected to IMAP`);
+        await ensureFolder(loop.client, INCOMING_FOLDER, loop.knownFolders);
       }
 
       await scanNewMessages(loop);

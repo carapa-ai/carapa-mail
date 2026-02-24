@@ -1,7 +1,7 @@
 // Required Notice: Copyright Regun Software SRL (https://carapa.ai)
 
 import http from 'http';
-import { HTTP_PORT, HTTP_API_TOKEN, ALLOW_SIGNUP, PUBLIC_HOSTNAME } from '../config.js';
+import { HTTP_PORT, HTTP_API_TOKEN, ALLOW_SIGNUP, PUBLIC_HOSTNAME, BIND_HOST } from '../config.js';
 import { authenticateAccount } from '../accounts.js';
 import { matchRoute } from './routes.js';
 
@@ -128,8 +128,8 @@ export function startHttpServer(): http.Server {
     }
   });
 
-  server.listen(HTTP_PORT, () => {
-    logger.info('http', `Admin API listening on port ${HTTP_PORT}`);
+  server.listen(HTTP_PORT, BIND_HOST, () => {
+    logger.info('http', `Admin API listening on ${BIND_HOST}:${HTTP_PORT}`);
   });
 
   return server;

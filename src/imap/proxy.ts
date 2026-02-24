@@ -2,7 +2,7 @@
 
 import net from 'net';
 import tls from 'tls';
-import { IMAP_PROXY_PORT } from '../config.js';
+import { IMAP_PROXY_PORT, BIND_HOST } from '../config.js';
 import { authenticateAccount, getAllAccounts, type Account } from '../accounts.js';
 import { createInterceptor } from './interceptor.js';
 import { logger } from '../logger.js';
@@ -117,13 +117,13 @@ export function startImapProxy(): net.Server {
   if (implicitTlsServer) {
     implicitTlsServer.on('listening', () => {
       const port = (implicitTlsServer as any).address().port;
-      server.listen(IMAP_PROXY_PORT, () => {
-        logger.info('imap', `Proxy listening on port ${IMAP_PROXY_PORT} (auto-detecting TLS/Plain, internal TLS port ${port})`);
+      server.listen(IMAP_PROXY_PORT, BIND_HOST, () => {
+        logger.info('imap', `Proxy listening on ${BIND_HOST}:${IMAP_PROXY_PORT} (auto-detecting TLS/Plain, internal TLS port ${port})`);
       });
     });
   } else {
-    server.listen(IMAP_PROXY_PORT, () => {
-      logger.info('imap', `Proxy listening on port ${IMAP_PROXY_PORT} (plaintext only, no certs available)`);
+    server.listen(IMAP_PROXY_PORT, BIND_HOST, () => {
+      logger.info('imap', `Proxy listening on ${BIND_HOST}:${IMAP_PROXY_PORT} (plaintext only, no certs available)`);
     });
   }
 

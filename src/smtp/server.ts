@@ -3,7 +3,7 @@
 import net from 'net';
 import tls from 'tls';
 import { SMTPServer } from 'smtp-server';
-import { SMTP_PORT, LOG_LEVEL } from '../config.js';
+import { SMTP_PORT, LOG_LEVEL, BIND_HOST } from '../config.js';
 import { authenticateAccount } from '../accounts.js';
 import { handleMessage } from './handler.js';
 import { logger } from '../logger.js';
@@ -139,8 +139,8 @@ export function startSmtpServer(): net.Server {
   const needed = implicitTlsServer ? 3 : 2;
   const onReady = () => {
     if (++readyCount === needed) {
-      server.listen(SMTP_PORT, () => {
-        logger.info('smtp', `Server listening on port ${SMTP_PORT} (auto-detecting SSL/TLS and STARTTLS)`);
+      server.listen(SMTP_PORT, BIND_HOST, () => {
+        logger.info('smtp', `Server listening on ${BIND_HOST}:${SMTP_PORT} (auto-detecting SSL/TLS and STARTTLS)`);
       });
     }
   };

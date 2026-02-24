@@ -33,6 +33,7 @@ if (fs.existsSync(envFile)) {
 export const SMTP_PORT = parseInt(process.env.SMTP_PORT || '2525', 10);
 export const IMAP_PROXY_PORT = parseInt(process.env.IMAP_PROXY_PORT || '1993', 10);
 export const HTTP_PORT = parseInt(process.env.HTTP_PORT || '3200', 10);
+export const BIND_HOST = process.env.BIND_HOST || '127.0.0.1';
 
 // AI filtering
 export const ANTHROPIC_AUTH_TOKEN = process.env.ANTHROPIC_AUTH_TOKEN || '';
@@ -83,6 +84,7 @@ export const AGENT_CHUNK_TOKENS = parseInt(process.env.AGENT_CHUNK_TOKENS || '0'
 // Inbound scanner
 export const INBOUND_SCAN = process.env.INBOUND_SCAN !== 'false';
 export const INBOUND_SCAN_INTERVAL = parseInt(process.env.INBOUND_SCAN_INTERVAL || '60000', 10);
+export const INCOMING_FOLDER = process.env.INCOMING_FOLDER || 'Incoming';
 
 // External antivirus (e.g. "clamscan --no-summary -")
 export const AV_COMMAND = process.env.AV_COMMAND || '';
