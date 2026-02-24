@@ -7,10 +7,21 @@ export enum LogLevel {
   ERROR = 3,
 }
 
-let currentLogLevel = LogLevel.INFO;
+const LOG_LEVELS: Record<string, LogLevel> = {
+  'debug': LogLevel.DEBUG,
+  'info': LogLevel.INFO,
+  'warn': LogLevel.WARN,
+  'error': LogLevel.ERROR
+};
 
-export function setLogLevel(level: LogLevel) {
-  currentLogLevel = level;
+let currentLogLevel = LOG_LEVELS[(process.env.LOG_LEVEL || 'info').toLowerCase()] ?? LogLevel.INFO;
+
+export function setLogLevel(level: LogLevel | string) {
+  if (typeof level === 'string') {
+    currentLogLevel = LOG_LEVELS[level.toLowerCase()] ?? currentLogLevel;
+  } else {
+    currentLogLevel = level;
+  }
 }
 
 function log(level: LogLevel, component: string, message: string, ...args: any[]) {

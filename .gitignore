@@ -9,3 +9,4 @@ store/
 group/
 ipc/
 push.sh
+certs/

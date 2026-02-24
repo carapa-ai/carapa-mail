@@ -260,6 +260,34 @@ bun test src/email/av-scanner.integration.test.ts
 4. Test via CarapaMail — send an email with the EICAR string as an attachment. The scanner pipes each attachment's content to clamscan --no-summary - via stdin. Exit code 0 = clean, non-zero = threat detected
 
 
+## Thunderbird connection with SSL/TLS
+
+# TO Install mkcert
+sudo apt install mkcert
+mkcert -install
+mkcert localhost 127.0.0.1 ::1
+ 
+In Thunderbird: Settings → Privacy & Security → scroll to Certificates → click Manage Certificates
+Go to the Authorities tab → Import → find the mkcert root CA file:
+The mkcert CA root is typically at ~/.local/share/mkcert/rootCA.pem. Here's how to fix the Thunderbird issue:
+
+Option A: Import mkcert CA into Thunderbird
+In Thunderbird: Settings → Privacy & Security → Certificates → Manage Certificates
+Authorities tab → Import
+Navigate to ~/.local/share/mkcert/rootCA.pem and import it
+Check "Trust this CA to identify websites" and "Trust this CA to identify email users"
+Click OK and retry the connection
+Option B: Accept the certificate exception
+When configuring manually in Thunderbird:
+
+Account Settings → Account Actions → Add Mail Account
+Enter email + CarapaMail local password
+Click "Configure manually" (bottom of the dialog)
+Set: IMAP localhost:1994 SSL/TLS, SMTP localhost:1587 SSL/TLS
+Click "Re-test" — Thunderbird should show a certificate warning
+Click "Confirm Security Exception" to accept it
+
+
 ## Known limitations
 
 1. **No encrypted attachment inspection** — password-protected ZIP/RAR/7z files cannot be scanned; encrypted emails (PGP/S/MIME) are detected and flagged but content cannot be inspected

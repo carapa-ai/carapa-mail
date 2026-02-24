@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
-import { STORE_DIR, TLS_CERT_PATH, TLS_KEY_PATH } from './config.js';
+import { STORE_DIR, TLS_CERT_PATH, TLS_KEY_PATH, PUBLIC_HOSTNAME } from './config.js';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
@@ -147,8 +147,9 @@ export function getTlsCertificate(): { key: string; cert: string } | null {
   }
 
   try {
+    const subj = PUBLIC_HOSTNAME ? `/CN=${PUBLIC_HOSTNAME}` : '/CN=localhost';
     execSync(
-      `openssl req -x509 -newkey rsa:2048 -keyout "${keyPath}" -out "${certPath}" -days 3650 -nodes -subj "/CN=localhost"`,
+      `openssl req -x509 -newkey rsa:2048 -keyout "${keyPath}" -out "${certPath}" -days 3650 -nodes -subj "${subj}"`,
       { stdio: 'pipe' }
     );
     return {

@@ -48,7 +48,17 @@ export function startHttpServer(): http.Server {
     }
 
     const clientIp = req.socket.remoteAddress || 'unknown';
-    const isLocal = clientIp === '127.0.0.1' || clientIp === '::1' || clientIp === '::ffff:127.0.0.1';
+    const isLocal = clientIp === '127.0.0.1' || clientIp === '::1' || clientIp === '::ffff:127.0.0.1' ||
+      clientIp.startsWith('192.168.') ||
+      clientIp.startsWith('10.') ||
+      clientIp.startsWith('::ffff:192.168.') ||
+      clientIp.startsWith('::ffff:10.') ||
+      (clientIp.startsWith('172.') && (() => {
+        const parts = clientIp.split('.');
+        if (parts.length < 2) return false;
+        const second = parseInt(parts[1], 10);
+        return second >= 16 && second <= 31;
+      })());
 
     const pathname = (req.url || '/').split('?')[0];
     const isPublic = pathname === '/' || pathname === '/setup' || pathname === '/health'

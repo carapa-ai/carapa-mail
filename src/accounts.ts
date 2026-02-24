@@ -15,7 +15,7 @@ import {
   type AccountRow,
 } from './db/index.js';
 import { clearTransporter } from './smtp/relay.js';
-import { ALLOW_PROMPT_OVERRIDE, ALLOW_PROMPT_APPEND } from './config.js';
+import { ALLOW_PROMPT_OVERRIDE, ALLOW_PROMPT_APPEND, LOG_LEVEL } from './config.js';
 
 export type PromptMode = 'default' | 'append' | 'replace';
 
@@ -305,14 +305,18 @@ export async function testCredentials(creds: {
         port: creds.imap.port,
         secure: creds.imap.port === 993,
         auth: { user: creds.imap.user, pass: creds.imap.pass },
-        logger: false,
+        logger: LOG_LEVEL === 'debug' ? undefined : false,
         tls: { rejectUnauthorized: (creds as any).strictTls !== false },
       });
       await withTimeout(client.connect(), TEST_TIMEOUT, 'IMAP');
       await client.logout();
       imapOk = true;
     } catch (e: any) {
-      errors.push(`IMAP: ${e.message}`);
+      let msg = e.message;
+      if (msg.includes('INTERACTIONREQUIRED')) {
+        msg = 'Interaction required (MFA). Please use an App Password instead of your regular Microsoft password.';
+      }
+      errors.push(`IMAP: ${msg}`);
     }
   }
 
@@ -336,7 +340,11 @@ export async function testCredentials(creds: {
       await withTimeout(transporter.verify(), TEST_TIMEOUT, 'SMTP');
       smtpOk = true;
     } catch (e: any) {
-      errors.push(`SMTP: ${e.message}`);
+      let msg = e.message;
+      if (msg.includes('INTERACTIONREQUIRED')) {
+        msg = 'Interaction required (MFA). Please use an App Password instead of your regular Microsoft password.';
+      }
+      errors.push(`SMTP: ${msg}`);
     }
   }
 
