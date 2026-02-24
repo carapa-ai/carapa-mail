@@ -71,7 +71,7 @@ export const PROJECT_ROOT = projectRoot;
 export const STORE_DIR = path.resolve(PROJECT_ROOT, 'store');
 
 // Agent call timeout (ms)
-export const FILTER_TIMEOUT = parseInt(process.env.FILTER_TIMEOUT || '5000', 10);
+export const FILTER_TIMEOUT = parseInt(process.env.FILTER_TIMEOUT || '30000', 10);
 
 // Maximum tokens per AI chunk (0 = no chunking, send full content)
 // Approximate: 1 token ≈ 4 characters. e.g. 4000 tokens ≈ 16000 chars.
