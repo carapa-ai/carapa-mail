@@ -2,7 +2,7 @@
 
 import net from 'net';
 import tls from 'tls';
-import { IMAP_PROXY_PORT, BIND_HOST } from '../config.js';
+import { IMAP_PROXY_PORT, BIND_HOST, ALLOW_INSECURE_AUTH } from '../config.js';
 import { authenticateAccount, getAllAccounts, type Account } from '../accounts.js';
 import { createInterceptor } from './interceptor.js';
 import { logger } from '../logger.js';
@@ -158,12 +158,13 @@ function setupImapSession(
   // processing (session tickets) before application data can flow
   function getCapabilities(): string[] {
     const caps = ['IMAP4rev1'];
-    if (!isSecure && certs) {
+    if (!isSecure && certs && !ALLOW_INSECURE_AUTH) {
       // RFC 3501: MUST advertise LOGINDISABLED when not encrypted
       caps.push('STARTTLS', 'LOGINDISABLED');
     } else {
-      // Only advertise auth methods over a secure connection
+      // Advertise auth methods (secure connection, or insecure auth allowed)
       caps.push('AUTH=PLAIN', 'SASL-IR');
+      if (!isSecure && certs) caps.push('STARTTLS');
     }
     caps.push('ID', 'IDLE', 'NAMESPACE');
     return caps;
@@ -450,7 +451,7 @@ function setupImapSession(
     // LOGIN: TAG LOGIN "user" "pass"
     if (/^\S+ LOGIN /i.test(str)) {
       const tag = str.split(' ')[0];
-      if (!isSecure && certs) {
+      if (!isSecure && certs && !ALLOW_INSECURE_AUTH) {
         clientSocket.write(`${tag} NO [PRIVACYREQUIRED] STARTTLS required before login\r\n`);
         return;
       }
@@ -465,7 +466,7 @@ function setupImapSession(
     if (/^\S+ AUTHENTICATE PLAIN/i.test(str)) {
       const parts = str.trim().split(/\s+/);
       authenticateTag = parts[0];
-      if (!isSecure && certs) {
+      if (!isSecure && certs && !ALLOW_INSECURE_AUTH) {
         clientSocket.write(`${authenticateTag} NO [PRIVACYREQUIRED] STARTTLS required before authentication\r\n`);
         return;
       }

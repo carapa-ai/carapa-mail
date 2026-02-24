@@ -3,7 +3,7 @@
 import net from 'net';
 import tls from 'tls';
 import { SMTPServer } from 'smtp-server';
-import { SMTP_PORT, LOG_LEVEL, BIND_HOST } from '../config.js';
+import { SMTP_PORT, LOG_LEVEL, BIND_HOST, ALLOW_INSECURE_AUTH } from '../config.js';
 import { authenticateAccount } from '../accounts.js';
 import { handleMessage } from './handler.js';
 import { logger } from '../logger.js';
@@ -13,7 +13,7 @@ import { getTlsCertificate } from '../crypto.js';
 function smtpOptions(certs: { key: string; cert: string } | null) {
   return {
     authOptional: false,
-    allowInsecureAuth: false,
+    allowInsecureAuth: ALLOW_INSECURE_AUTH,
     size: 25 * 1024 * 1024,
     logger: LOG_LEVEL === 'debug',
     key: certs?.key,
@@ -47,7 +47,7 @@ export function startSmtpServer(): net.Server {
   const certs = getTlsCertificate();
 
   // STARTTLS server: plaintext clients connect here and upgrade via STARTTLS
-  // Has certs so it can offer STARTTLS, keeps allowInsecureAuth: false
+  // Has certs so it can offer STARTTLS, allowInsecureAuth must stay false
   const starttlsServer = new SMTPServer({ ...smtpOptions(certs), secure: false });
   starttlsServer.on('error', (err) => logger.error('smtp', `SMTP STARTTLS server error: ${err}`));
   starttlsServer.listen(0, '127.0.0.1');
@@ -136,7 +136,7 @@ export function startSmtpServer(): net.Server {
 
   // Start outer server once all internal servers are ready
   let readyCount = 0;
-  const needed = implicitTlsServer ? 3 : 2;
+  const needed = 2 + (implicitTlsServer ? 1 : 0);
   const onReady = () => {
     if (++readyCount === needed) {
       server.listen(SMTP_PORT, BIND_HOST, () => {
@@ -147,6 +147,7 @@ export function startSmtpServer(): net.Server {
   starttlsServer.server.on('listening', onReady);
   postTlsServer.server.on('listening', onReady);
   if (implicitTlsServer) implicitTlsServer.on('listening', onReady);
+
 
   return server;
 }

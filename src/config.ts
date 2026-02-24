@@ -34,6 +34,7 @@ export const SMTP_PORT = parseInt(process.env.SMTP_PORT || '2525', 10);
 export const IMAP_PROXY_PORT = parseInt(process.env.IMAP_PROXY_PORT || '1993', 10);
 export const HTTP_PORT = parseInt(process.env.HTTP_PORT || '3200', 10);
 export const BIND_HOST = process.env.BIND_HOST || '127.0.0.1';
+export const ALLOW_INSECURE_AUTH = process.env.ALLOW_INSECURE_AUTH === 'true';
 
 // AI filtering
 export const ANTHROPIC_AUTH_TOKEN = process.env.ANTHROPIC_AUTH_TOKEN || '';

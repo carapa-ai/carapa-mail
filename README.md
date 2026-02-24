@@ -177,6 +177,7 @@ Accounts are managed through the setup UI at `/setup` (or via the `/api/accounts
 | `IMAP_PROXY_PORT` | `1993` | Local IMAP proxy port |
 | `HTTP_PORT` | `3200` | Admin UI + API port |
 | `BIND_HOST` | `127.0.0.1` | Address to bind SMTP, IMAP, and HTTP servers to. Set to `0.0.0.0` to accept connections from the local network |
+| `ALLOW_INSECURE_AUTH` | `false` | `true` = allow SMTP and IMAP authentication without TLS. **Note:** enabling this disables STARTTLS/TLS on SMTP (library limitation). Only use on trusted networks (LAN) |
 | `AI_FEATURES_ENABLED` | `true` | Master toggle for all AI filtering. If `false`, all AI logic is bypassed (lite/non-AI mode) |
 | `ANTHROPIC_AUTH_TOKEN` | — | LLM API key (required for AI filtering) |
 | `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | API base URL. Override to use a local proxy or alternative endpoint |
@@ -451,6 +452,38 @@ prompts/
   inbound-agent-filter.md — inbound filter prompt (AI agents via MCP, stricter)
   outbound-filter.md      — outbound filter prompt (SMTP)
 ```
+
+## Troubleshooting
+
+### LAN access (connecting from another device on the network)
+
+By default, all servers bind to `127.0.0.1` (localhost only). To allow connections from other devices on your LAN:
+
+1. Set `BIND_HOST=0.0.0.0` in your `.env`
+2. If your mail client requires plaintext authentication (no TLS), also set `ALLOW_INSECURE_AUTH=true`
+
+> **Note:** `ALLOW_INSECURE_AUTH=true` disables STARTTLS/TLS on SMTP due to a limitation in the underlying `smtp-server` library. This means you must choose one mode:
+> - **Secure (default):** `ALLOW_INSECURE_AUTH=false` — TLS and STARTTLS work normally, plaintext AUTH is rejected.
+> - **Insecure (LAN):** `ALLOW_INSECURE_AUTH=true` — plaintext AUTH is allowed, but SMTP TLS/STARTTLS will not work.
+>
+> IMAP is unaffected — it supports both secure and insecure connections regardless of this setting.
+
+### Using standard ports (993, 587)
+
+If your mail client ignores custom ports (e.g. Outlook), you can use the standard IMAP/SMTP ports:
+
+```bash
+IMAP_PROXY_PORT=993
+SMTP_PORT=587
+```
+
+On Linux, ports below 1024 require elevated permissions. Grant Bun the capability once:
+
+```bash
+sudo setcap 'cap_net_bind_service=+ep' $(which bun)
+```
+
+After this, `bun run start` works without `sudo`.
 
 ## Support & Bugs
 
