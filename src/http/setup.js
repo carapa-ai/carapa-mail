@@ -778,9 +778,32 @@ function showPromptsForm(id) {
   document.getElementById('p-inbound').value = acc.customInboundPrompt || '';
   document.getElementById('p-outbound').value = acc.customOutboundPrompt || '';
   document.getElementById('p-agent').value = acc.customAgentPrompt || '';
-  setPromptMode('inbound', acc.customInboundPromptMode || 'default');
-  setPromptMode('outbound', acc.customOutboundPromptMode || 'default');
-  setPromptMode('agent', acc.customAgentPromptMode || 'default');
+  
+  // Apply admin restrictions to UI
+  ['inbound', 'outbound', 'agent'].forEach(name => {
+    const overrideRadio = document.querySelector('input[name="p-mode-' + name + '"][value="replace"]');
+    const appendRadio = document.querySelector('input[name="p-mode-' + name + '"][value="append"]');
+    
+    if (overrideRadio) overrideRadio.disabled = !window.ALLOW_PROMPT_OVERRIDE;
+    if (appendRadio) appendRadio.disabled = !window.ALLOW_PROMPT_APPEND;
+
+    if (overrideRadio && !window.ALLOW_PROMPT_OVERRIDE) {
+      overrideRadio.parentElement.style.opacity = '0.5';
+      overrideRadio.parentElement.title = 'Admin has disabled custom prompt overrides';
+    }
+    if (appendRadio && !window.ALLOW_PROMPT_APPEND) {
+      appendRadio.parentElement.style.opacity = '0.5';
+      appendRadio.parentElement.title = 'Admin has disabled custom prompt appending';
+    }
+  });
+
+  const inboundMode = (!window.ALLOW_PROMPT_OVERRIDE && acc.customInboundPromptMode === 'replace') || (!window.ALLOW_PROMPT_APPEND && acc.customInboundPromptMode === 'append') ? 'default' : (acc.customInboundPromptMode || 'default');
+  const outboundMode = (!window.ALLOW_PROMPT_OVERRIDE && acc.customOutboundPromptMode === 'replace') || (!window.ALLOW_PROMPT_APPEND && acc.customOutboundPromptMode === 'append') ? 'default' : (acc.customOutboundPromptMode || 'default');
+  const agentMode = (!window.ALLOW_PROMPT_OVERRIDE && acc.customAgentPromptMode === 'replace') || (!window.ALLOW_PROMPT_APPEND && acc.customAgentPromptMode === 'append') ? 'default' : (acc.customAgentPromptMode || 'default');
+
+  setPromptMode('inbound', inboundMode);
+  setPromptMode('outbound', outboundMode);
+  setPromptMode('agent', agentMode);
   document.getElementById('prompts-error').textContent = '';
   switchPromptTab('inbound');
   document.getElementById('prompts-overlay').classList.add('active');

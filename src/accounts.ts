@@ -15,6 +15,7 @@ import {
   type AccountRow,
 } from './db/index.js';
 import { clearTransporter } from './smtp/relay.js';
+import { ALLOW_PROMPT_OVERRIDE, ALLOW_PROMPT_APPEND } from './config.js';
 
 export type PromptMode = 'default' | 'append' | 'replace';
 
@@ -25,8 +26,8 @@ function promptModeFromDb(value: number): PromptMode {
 }
 
 function promptModeToDb(mode: PromptMode | undefined): number {
-  if (mode === 'append') return 2;
-  if (mode === 'replace') return 1;
+  if (mode === 'append' && ALLOW_PROMPT_APPEND) return 2;
+  if (mode === 'replace' && ALLOW_PROMPT_OVERRIDE) return 1;
   return 0;
 }
 

@@ -2,7 +2,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { PROJECT_ROOT } from '../config.js';
+import { PROJECT_ROOT, ALLOW_PROMPT_OVERRIDE, ALLOW_PROMPT_APPEND } from '../config.js';
 import { getAccountById } from '../accounts.js';
 
 import { DLP_RULES } from '../email/dlp-rules.js';
@@ -46,8 +46,8 @@ export function getFilterPrompt(context: FilterContext, accountId?: string): str
         'inbound-agent': { mode: account.customAgentPromptMode, text: account.customAgentPrompt },
       } as const;
       const { mode, text } = modeMap[context];
-      if (mode === 'replace' && text) return text;
-      if (mode === 'append' && text) return defaultPrompt + '\n\n' + text;
+      if (mode === 'replace' && text && ALLOW_PROMPT_OVERRIDE) return text;
+      if (mode === 'append' && text && ALLOW_PROMPT_APPEND) return defaultPrompt + '\n\n' + text;
     }
   }
 

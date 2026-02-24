@@ -44,6 +44,8 @@ export const FILTER_CONFIDENCE_THRESHOLD = parseFloat(process.env.FILTER_CONFIDE
 export const HTTP_API_TOKEN = process.env.HTTP_API_TOKEN || '';
 export const ALLOW_SIGNUP = process.env.ALLOW_SIGNUP === 'true';
 export const PUBLIC_HOSTNAME = process.env.PUBLIC_HOSTNAME || '';
+export const ALLOW_PROMPT_OVERRIDE = process.env.ALLOW_PROMPT_OVERRIDE !== 'false';
+export const ALLOW_PROMPT_APPEND = process.env.ALLOW_PROMPT_APPEND !== 'false';
 
 // Encryption (optional — auto-generated if not set)
 export const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || '';

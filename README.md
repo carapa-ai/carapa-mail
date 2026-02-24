@@ -184,6 +184,8 @@ Accounts are managed through the setup UI at `/setup` (or via the `/api/accounts
 | `MCP_PUBLIC_URL` | — | Full public URL for the MCP endpoint shown in the setup UI (e.g. `https://mail.example.com:3466/mcp`). Falls back to `https://<PUBLIC_HOSTNAME>:<MCP_PORT>/mcp` |
 | `HTTP_API_TOKEN` | — | Bearer token for admin API (empty = no auth). Set this in production |
 | `ALLOW_SIGNUP` | `false` | `true` = guests can create accounts via `/setup` without the admin API token |
+| `ALLOW_PROMPT_OVERRIDE` | `true` | `false` = prevent accounts from replacing the system filter prompt with a custom one |
+| `ALLOW_PROMPT_APPEND` | `true` | `false` = prevent accounts from appending custom text to the system filter prompt |
 | `PUBLIC_HOSTNAME` | (auto-detect) | Hostname shown in mail client setup instructions. Falls back to `window.location.hostname` |
 | `DB_TYPE` | `sqlite` | `sqlite` or `postgres` |
 | `DATABASE_URL` | — | PostgreSQL connection string (required when `DB_TYPE=postgres`). Example: `postgres://user:pass@localhost:5432/carapamail` |

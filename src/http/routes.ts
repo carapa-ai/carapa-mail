@@ -33,7 +33,18 @@ import {
   type AccountInput,
 } from '../accounts.js';
 import { getSetupPage } from './setup-ui.js';
-import { ALLOW_SIGNUP, HTTP_API_TOKEN, PUBLIC_HOSTNAME, SMTP_PORT, IMAP_PROXY_PORT, MCP_PORT, MCP_ENABLED, MCP_PUBLIC_URL } from '../config.js';
+import {
+  ALLOW_SIGNUP,
+  HTTP_API_TOKEN,
+  PUBLIC_HOSTNAME,
+  SMTP_PORT,
+  IMAP_PROXY_PORT,
+  MCP_PORT,
+  MCP_ENABLED,
+  MCP_PUBLIC_URL,
+  ALLOW_PROMPT_OVERRIDE,
+  ALLOW_PROMPT_APPEND
+} from '../config.js';
 import { randomUUID } from 'crypto';
 import { logger } from '../logger.js';
 import { checkRateLimit, recordAttempt } from '../rate-limiter.js';
@@ -114,7 +125,18 @@ const routes: { method: string; pattern: RegExp; handler: RouteHandler }[] = [
     method: 'GET',
     pattern: /^\/(?:setup)?$/,
     handler: async (_req, res) => {
-      html(res, getSetupPage({ allowSignup: ALLOW_SIGNUP, hasToken: !!HTTP_API_TOKEN, publicHostname: PUBLIC_HOSTNAME, smtpPort: SMTP_PORT, imapProxyPort: IMAP_PROXY_PORT, mcpPort: MCP_PORT, mcpEnabled: MCP_ENABLED, mcpPublicUrl: MCP_PUBLIC_URL }));
+      html(res, getSetupPage({
+        allowSignup: ALLOW_SIGNUP,
+        hasToken: !!HTTP_API_TOKEN,
+        publicHostname: PUBLIC_HOSTNAME,
+        smtpPort: SMTP_PORT,
+        imapProxyPort: IMAP_PROXY_PORT,
+        mcpPort: MCP_PORT,
+        mcpEnabled: MCP_ENABLED,
+        mcpPublicUrl: MCP_PUBLIC_URL,
+        allowPromptOverride: ALLOW_PROMPT_OVERRIDE,
+        allowPromptAppend: ALLOW_PROMPT_APPEND
+      }));
     },
   },
 
