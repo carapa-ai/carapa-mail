@@ -140,13 +140,14 @@ export async function insertQuarantine(entry: {
   );
 }
 
-export async function listQuarantine(status?: string, accountId?: string): Promise<QuarantineEntry[]> {
+export async function listQuarantine(status?: string, accountId?: string, limit = 100, offset = 0): Promise<QuarantineEntry[]> {
   const where: string[] = [];
   const params: any[] = [];
   if (status) { where.push('status = ?'); params.push(status); }
   if (accountId) { where.push('account_id = ?'); params.push(accountId); }
   const clause = where.length > 0 ? ` WHERE ${where.join(' AND ')}` : '';
-  return adapter.query<QuarantineEntry>(`SELECT * FROM quarantine${clause} ORDER BY created_at DESC`, params);
+  params.push(limit, offset);
+  return adapter.query<QuarantineEntry>(`SELECT * FROM quarantine${clause} ORDER BY created_at DESC LIMIT ? OFFSET ?`, params);
 }
 
 export async function getQuarantineEntry(id: string): Promise<QuarantineEntry | null> {

@@ -422,10 +422,12 @@ const routes: { method: string; pattern: RegExp; handler: RouteHandler }[] = [
     handler: async (req, res) => {
       const url = new URL(req.url || '/', `http://${req.headers.host}`);
       const status = url.searchParams.get('status') || undefined;
+      const limit = parseInt(url.searchParams.get('limit') || '100', 10);
+      const offset = parseInt(url.searchParams.get('offset') || '0', 10);
       const requestedId = url.searchParams.get('account') || undefined;
       const accountId = getEffectiveAccountId(req, res, requestedId);
       if (accountId === null) return;
-      json(res, await listQuarantine(status, accountId));
+      json(res, await listQuarantine(status, accountId, limit, offset));
     },
   },
   {

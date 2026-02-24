@@ -185,6 +185,11 @@ async function loadAccounts() {
   }
 }
 
+var quarantinePage = 0;
+var quarantinePageSize = 20;
+var auditPage = 0;
+var auditPageSize = 50;
+
 var activeMainTab = 'accounts';
 function switchMainTab(tab) {
   activeMainTab = tab;
@@ -194,8 +199,8 @@ function switchMainTab(tab) {
   document.querySelectorAll('#main-ui > .tab-content').forEach(c => {
     c.classList.toggle('active', c.id === 'tab-' + tab);
   });
-  if (tab === 'quarantine') loadQuarantine();
-  else if (tab === 'audit') loadAuditLogs();
+  if (tab === 'quarantine') { quarantinePage = 0; loadQuarantine(); }
+  else if (tab === 'audit') { auditPage = 0; loadAuditLogs(); }
   else if (tab === 'rules') loadRules();
   else if (tab === 'whitelist') loadWhitelist();
   else if (tab === 'stats') loadStats();
@@ -205,8 +210,9 @@ async function loadQuarantine() {
   const el = document.getElementById('quarantine-list');
   if (!el) return;
   try {
-    const list = await apiJson('/quarantine?status=pending');
-    if (list.length === 0) {
+    const offset = quarantinePage * quarantinePageSize;
+    const list = await apiJson('/quarantine?status=pending&limit=' + quarantinePageSize + '&offset=' + offset);
+    if (list.length === 0 && quarantinePage === 0) {
       el.innerHTML = '<div class="empty">No messages in quarantine</div>';
       return;
     }
@@ -237,6 +243,7 @@ async function loadQuarantine() {
       </tr>
     `}).join('');
     html += '</tbody></table></div>';
+    html += renderPagination(quarantinePage, list.length, quarantinePageSize, 'quarantine');
     el.innerHTML = html;
   } catch (e) {
     el.innerHTML = '<div class="empty">Failed to load quarantine</div>';
@@ -276,8 +283,9 @@ async function loadAuditLogs() {
   const el = document.getElementById('audit-list');
   if (!el) return;
   try {
-    const list = await apiJson('/audit?limit=50&offset=0');
-    if (list.length === 0) {
+    const offset = auditPage * auditPageSize;
+    const list = await apiJson('/audit?limit=' + auditPageSize + '&offset=' + offset);
+    if (list.length === 0 && auditPage === 0) {
       el.innerHTML = '<div class="empty">No audit logs available</div>';
       return;
     }
@@ -300,10 +308,27 @@ async function loadAuditLogs() {
       </tr>
     `}).join('');
     html += '</tbody></table></div>';
+    html += renderPagination(auditPage, list.length, auditPageSize, 'audit');
     el.innerHTML = html;
   } catch (e) {
     el.innerHTML = '<div class="empty">Failed to load audit logs: ' + esc(e.message) + '</div>';
   }
+}
+
+function renderPagination(page, count, pageSize, type) {
+  const hasPrev = page > 0;
+  const hasNext = count === pageSize;
+  if (!hasPrev && !hasNext) return '';
+  return '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;">'
+    + '<button ' + (hasPrev ? 'onclick="paginateTo(\'' + type + '\',' + (page - 1) + ')"' : 'disabled') + ' style="padding:6px 14px;">&larr; Newer</button>'
+    + '<span style="color:#888;font-size:13px;">Page ' + (page + 1) + '</span>'
+    + '<button ' + (hasNext ? 'onclick="paginateTo(\'' + type + '\',' + (page + 1) + ')"' : 'disabled') + ' style="padding:6px 14px;">Older &rarr;</button>'
+    + '</div>';
+}
+
+function paginateTo(type, page) {
+  if (type === 'quarantine') { quarantinePage = page; loadQuarantine(); }
+  else if (type === 'audit') { auditPage = page; loadAuditLogs(); }
 }
 
 async function loadRules() {
@@ -781,12 +806,12 @@ function showPromptsForm(id) {
   document.getElementById('p-inbound').value = acc.customInboundPrompt || '';
   document.getElementById('p-outbound').value = acc.customOutboundPrompt || '';
   document.getElementById('p-agent').value = acc.customAgentPrompt || '';
-  
+
   // Apply admin restrictions to UI
   ['inbound', 'outbound', 'agent'].forEach(name => {
     const overrideRadio = document.querySelector('input[name="p-mode-' + name + '"][value="replace"]');
     const appendRadio = document.querySelector('input[name="p-mode-' + name + '"][value="append"]');
-    
+
     if (overrideRadio) overrideRadio.disabled = !window.ALLOW_PROMPT_OVERRIDE;
     if (appendRadio) appendRadio.disabled = !window.ALLOW_PROMPT_APPEND;
 
