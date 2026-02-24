@@ -6,7 +6,7 @@ import { scanAuthenticity } from '../email/authenticity.js';
 import { toEmailSummary } from '../email/parser.js';
 import { inspectEmail } from '../agent/filter.js';
 import { getScan, getScannerState, recordScan, logAudit, getMatchingRules } from '../db/index.js';
-import { AUTO_QUARANTINE, FILTER_CONFIDENCE_THRESHOLD } from '../config.js';
+import { FILTER_CONFIDENCE_THRESHOLD } from '../config.js';
 import type { EmailSummary, FolderPolicy, FolderContext } from '../types.js';
 import { simpleParser } from 'mailparser';
 
@@ -131,17 +131,29 @@ function buildWarningBody(reason: string, section: string): Buffer {
 
 /**
  * Build a placeholder body for messages still being scanned.
+ * Preserves original headers when available to prevent clients (e.g. Thunderbird)
+ * from caching fake placeholder headers permanently.
  */
-function buildPendingScanBody(section: string): Buffer {
+function buildPendingScanBody(section: string, originalRaw?: string): Buffer {
   const text = `[CarapaMail: Message pending security scan]\r\n\r\nThis message has not been scanned yet. Please refresh in a moment.\r\n`;
 
   const isFull = section === 'BODY[]' || section === 'RFC822';
-  const isHeader = section.includes('HEADER');
 
-  if (isFull || isHeader) {
-    const msg = `From: carapamail-filter@local\r\nSubject: [PENDING SCAN] Message awaiting security check\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n${isFull ? text : ''}`;
+  if (isFull && originalRaw) {
+    // Preserve original headers, replace only the body
+    const headerEnd = originalRaw.indexOf('\r\n\r\n');
+    const originalHeaders = headerEnd > 0 ? originalRaw.slice(0, headerEnd) : originalRaw.slice(0, 4096);
+    const msg = `${originalHeaders}\r\n\r\n${text}`;
     return Buffer.from(msg, 'utf-8');
   }
+
+  if (isFull) {
+    // No original available — fallback to synthetic headers
+    const msg = `From: carapamail-filter@local\r\nSubject: [PENDING SCAN] Message awaiting security check\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n${text}`;
+    return Buffer.from(msg, 'utf-8');
+  }
+
+  // BODY[TEXT] or other text section — just the placeholder body
   return Buffer.from(text, 'utf-8');
 }
 
@@ -349,7 +361,8 @@ export function createInterceptor() {
             const gate = await gateUid(state.currentUid);
             const isFullMessage = section === 'BODY[]' || section === 'RFC822';
 
-            if (gate === 'block' || (gate === 'pending' && !isFullMessage)) {
+            const isHeaderOnly = section.includes('HEADER');
+            if (gate === 'block' || (gate === 'pending' && !isFullMessage && !isHeaderOnly)) {
               // Replace body literal with warning/placeholder, skip original literal data
               const label = gate === 'pending' ? 'not yet scanned' : 'rejected/quarantined';
               console.log(`[imap:gate] ${gate.toUpperCase()} uid=${state.currentUid} body literal (${label})`);
@@ -476,7 +489,7 @@ async function filterAndSanitizeLiteral(
         return buildWarningBody(existing.reason || 'Flagged by AI filter', section);
       }
       // Already scanned and passed — skip to sanitization
-    } else if (isFullMessage && (AUTO_QUARANTINE || ctx.policy.autoQuarantine)) {
+    } else if (isFullMessage) {
       // Not yet scanned, but we have the full message — run AI filter inline
       const headers = parseHeaders(text);
       const body = extractBody(text);
@@ -550,7 +563,7 @@ async function filterAndSanitizeLiteral(
       // Partial body fetch (BODY[TEXT], BODY[1], etc.) for an unscanned message.
       // We don't have the full message to run AI filter — block with placeholder.
       console.log(`[imap:gate] BLOCK uid=${uid} partial fetch ${section} (not yet scanned)`);
-      return buildPendingScanBody(section);
+      return buildPendingScanBody(section, text);
     }
   }
 
