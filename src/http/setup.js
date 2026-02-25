@@ -70,12 +70,30 @@ function cancelAuthPrompt() {
   document.getElementById('accounts-list').innerHTML = '<div class="empty">Add your email account to get started with CarapaMail.<br><br><button class="primary" onclick="isGuest=false;showAuthPrompt();return false;">Login</button></div>';
 }
 
-function submitToken() {
+async function submitToken() {
   const token = document.getElementById('auth-token').value.trim();
   if (!token) return;
+  const errEl = document.getElementById('admin-login-error');
+  if (errEl) errEl.textContent = '';
+
+  // Validate the token with the server before updating UI
+  try {
+    const res = await fetch(API + '/api/accounts', {
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }
+    });
+    if (!res.ok) {
+      if (errEl) errEl.textContent = 'Invalid admin key';
+      return;
+    }
+  } catch (err) {
+    if (errEl) errEl.textContent = 'Connection failed: ' + err.message;
+    return;
+  }
+
   apiToken = token;
   authMode = 'admin';
   isUser = false;
+  isGuest = false;
   sessionStorage.setItem('carapamail_token', token);
   sessionStorage.setItem('carapamail_auth_mode', 'admin');
   document.getElementById('auth-prompt').style.display = 'none';
@@ -153,9 +171,10 @@ function showMsg(text, type) {
 
 async function loadAccounts() {
   if (isGuest) {
-    document.getElementById('main-ui').style.display = 'none';
+    document.getElementById('main-ui').style.display = 'block';
+    document.getElementById('main-tabs').style.display = 'none';
     document.getElementById('auth-prompt').style.display = 'block';
-    document.getElementById('accounts-list').innerHTML = '<div class="empty">Add your email account to get started with CarapaMail.<br><br><button class="primary" onclick="isGuest=false;showAuthPrompt();return false;">Login</button></div>';
+    document.getElementById('accounts-list').innerHTML = '';
     return;
   }
 
@@ -429,7 +448,7 @@ async function loadWhitelist() {
         <td style="white-space:nowrap; vertical-align:top;">${esc(e.source)}</td>
         <td style="white-space:nowrap; vertical-align:top; color:#888;">${new Date(e.created_at).toLocaleDateString()}</td>
         <td style="vertical-align:top; text-align:right;">
-          <button class="danger" style="padding:4px 8px;" onclick="deleteWhitelist('${esc(e.type)}', '${esc(e.pattern)}')">Delete</button>
+          <button class="danger" style="padding:4px 8px;" onclick="deleteWhitelist('${esc(e.type)}', '${esc(e.pattern)}', '${esc(e.account_id)}')">Delete</button>
         </td>
       </tr>
     `).join('');
@@ -477,12 +496,12 @@ async function handleWhitelistSubmit(e) {
   }
 }
 
-async function deleteWhitelist(type, pattern) {
+async function deleteWhitelist(type, pattern, accountId) {
   if (!confirm('Are you sure you want to delete this whitelist entry?')) return;
   try {
     await apiJson('/whitelist', {
       method: 'DELETE',
-      body: JSON.stringify({ type, pattern })
+      body: JSON.stringify({ type, pattern, account_id: accountId })
     });
     showMsg('Whitelist entry deleted', 'success');
     loadWhitelist();
