@@ -337,6 +337,7 @@ export function createInterceptor() {
                   state.currentSection,
                   context,
                   scanCache,
+                  await getScannerBaseline(),
                 );
                 const prefix = state.literalPrefix.replace(
                   /\{(\d+)\}/,
@@ -493,6 +494,7 @@ async function filterAndSanitizeLiteral(
   section: string,
   ctx: FolderContext,
   scanCache: Map<number, CacheEntry>,
+  baseline = 0,
 ): Promise<Buffer> {
   const text = data.toString('utf-8');
 
@@ -504,7 +506,10 @@ async function filterAndSanitizeLiteral(
     // Check DB cache first
     const existing = await getScan(ctx.folder, uid, ctx.uidValidity, 'inbound', ctx.accountId);
 
-    if (existing) {
+    // If no scan record exists, check if this message is below the baseline (trusted)
+    if (!existing && baseline > 0 && uid <= baseline) {
+      // Implicitly pass baseline messages without scanning
+    } else if (existing) {
       // Update the in-memory cache
       scanCache.set(uid, { status: existing, ts: Date.now() });
 
@@ -585,10 +590,11 @@ async function filterAndSanitizeLiteral(
     } else if (!isFullMessage && !existing) {
       // Partial body fetch (BODY[TEXT], BODY[1], etc.) for an unscanned message.
       // We don't have the full message to run AI filter — block with placeholder.
-      console.log(`[imap:gate] BLOCK uid=${uid} partial fetch ${section} (not yet scanned)`);
+      logger.debug('imap', `[gate] BLOCK uid=${uid} partial fetch ${section} (not yet scanned)`);
       return buildPendingScanBody(section, text);
     }
   }
+
 
   // Scan for dangerous attachments (only if we have the full message)
   let attachmentWarning = '';
