@@ -359,7 +359,7 @@ async function loadRules() {
       el.innerHTML = '<div class="empty">No custom rules configured</div>';
       return;
     }
-    let html = '<div class="table-wrap"><table style="table-layout:fixed; width:100%;"><thead><tr><th style="width:10%;">Action</th><th style="width:12%;">Direction</th><th style="width:12%;">Field</th><th style="width:auto%;">Pattern</th><th style="width:15%;">Date added</th><th style="width:100px;"></th></tr></thead><tbody>';
+    let html = '<div class="table-wrap"><table style="table-layout:fixed; width:100%;"><thead><tr><th style="width:10%;">Action</th><th style="width:10%;">Direction</th><th style="width:8%;">Field</th><th style="width:auto;">Pattern</th><th style="width:5%;">Prio</th><th style="width:12%;">Date</th><th style="width:110px;"></th></tr></thead><tbody>';
     html += list.map(e => `
       <tr>
         <td style="white-space:nowrap; vertical-align:top;">
@@ -368,8 +368,10 @@ async function loadRules() {
         <td style="white-space:nowrap; vertical-align:top; color:#888;">${esc(e.direction || 'both')}</td>
         <td style="white-space:nowrap; vertical-align:top; font-weight:500;">${esc(e.match_field)}</td>
         <td style="vertical-align:top; font-family:monospace; line-break:anywhere;">${esc(e.match_pattern)}</td>
+        <td style="white-space:nowrap; vertical-align:top; text-align:center;">${e.priority || 0}</td>
         <td style="white-space:nowrap; vertical-align:top; color:#888;">${new Date(e.created_at).toLocaleDateString()}</td>
-        <td style="vertical-align:top; text-align:right;">
+        <td style="vertical-align:top; text-align:right; white-space:nowrap;">
+          <button style="padding:4px 8px;" onclick='editRule(${JSON.stringify(e).replace(/'/g, "&#39;")})'>Edit</button>
           <button class="danger" style="padding:4px 8px;" onclick="deleteRule('${e.id}')">Delete</button>
         </td>
       </tr>
@@ -381,13 +383,32 @@ async function loadRules() {
   }
 }
 
+let editingRuleId = null;
+
 function showAddRuleForm() {
+  editingRuleId = null;
   document.getElementById('rule-form').reset();
   document.getElementById('rule-form-error').textContent = '';
+  document.getElementById('rule-form-title').textContent = 'Add Rule';
+  document.getElementById('rule-submit').textContent = 'Save Rule';
+  document.getElementById('rule-overlay').classList.add('active');
+}
+
+function editRule(rule) {
+  editingRuleId = rule.id;
+  document.getElementById('rule-form-error').textContent = '';
+  document.getElementById('rule-form-title').textContent = 'Edit Rule';
+  document.getElementById('rule-submit').textContent = 'Update Rule';
+  document.getElementById('r-type').value = rule.type;
+  document.getElementById('r-field').value = rule.match_field;
+  document.getElementById('r-pattern').value = rule.match_pattern;
+  document.getElementById('r-direction').value = rule.direction || 'both';
+  document.getElementById('r-priority').value = rule.priority || 0;
   document.getElementById('rule-overlay').classList.add('active');
 }
 
 function hideRuleForm() {
+  editingRuleId = null;
   document.getElementById('rule-overlay').classList.remove('active');
 }
 
@@ -400,7 +421,8 @@ async function handleRuleSubmit(e) {
     type: document.getElementById('r-type').value,
     match_field: document.getElementById('r-field').value,
     match_pattern: document.getElementById('r-pattern').value,
-    direction: document.getElementById('r-direction').value
+    direction: document.getElementById('r-direction').value,
+    priority: parseInt(document.getElementById('r-priority').value, 10) || 0
   };
 
   const submitBtn = document.getElementById('rule-submit');
@@ -408,15 +430,20 @@ async function handleRuleSubmit(e) {
   submitBtn.textContent = 'Saving...';
 
   try {
-    await apiJson('/rules', { method: 'POST', body: JSON.stringify(data) });
-    showMsg('Rule added successfully', 'success');
+    if (editingRuleId) {
+      await apiJson('/rules/' + editingRuleId, { method: 'PUT', body: JSON.stringify(data) });
+      showMsg('Rule updated', 'success');
+    } else {
+      await apiJson('/rules', { method: 'POST', body: JSON.stringify(data) });
+      showMsg('Rule added successfully', 'success');
+    }
     hideRuleForm();
     loadRules();
   } catch (err) {
     errEl.textContent = err.message;
   } finally {
     submitBtn.disabled = false;
-    submitBtn.textContent = 'Save Rule';
+    submitBtn.textContent = editingRuleId ? 'Update Rule' : 'Save Rule';
   }
 }
 

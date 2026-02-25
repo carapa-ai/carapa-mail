@@ -8,6 +8,7 @@ import {
   listRules,
   insertRule,
   deleteRule,
+  updateRule,
   getStats,
   autoWhitelistSender,
   logAudit,
@@ -579,6 +580,52 @@ const routes: { method: string; pattern: RegExp; handler: RouteHandler }[] = [
       if (!requireAdmin(req, res)) return;
       await deleteRule(params.id);
       json(res, { deleted: true });
+    },
+  },
+  {
+    method: 'PUT',
+    pattern: /^\/rules\/(?<id>[^/]+)$/,
+    handler: async (req, res, params) => {
+      if (!requireAdmin(req, res)) return;
+      const body = await safeJsonParse(req, res);
+      if (body === null) return;
+
+      const fields: Record<string, unknown> = {};
+
+      const VALID_TYPES = ['allow', 'block', 'quarantine'];
+      if (body.type !== undefined) {
+        if (!VALID_TYPES.includes(body.type)) return json(res, { error: `Invalid type. Must be one of: ${VALID_TYPES.join(', ')}` }, 400);
+        fields.type = body.type;
+      }
+
+      const VALID_FIELDS = ['from', 'to', 'subject', 'body'];
+      if (body.match_field !== undefined) {
+        if (!VALID_FIELDS.includes(body.match_field)) return json(res, { error: `Invalid match_field. Must be one of: ${VALID_FIELDS.join(', ')}` }, 400);
+        fields.match_field = body.match_field;
+      }
+
+      if (body.match_pattern !== undefined) {
+        if (typeof body.match_pattern !== 'string' || !body.match_pattern) return json(res, { error: 'match_pattern must be a non-empty string' }, 400);
+        if (body.match_pattern.length > 500) return json(res, { error: 'match_pattern must be 500 characters or fewer' }, 400);
+        try { new RegExp(body.match_pattern, 'i'); } catch { return json(res, { error: 'match_pattern is not a valid regular expression' }, 400); }
+        fields.match_pattern = body.match_pattern;
+      }
+
+      if (body.priority !== undefined) {
+        if (typeof body.priority !== 'number') return json(res, { error: 'priority must be a number' }, 400);
+        fields.priority = body.priority;
+      }
+
+      const VALID_DIRECTIONS = ['inbound', 'outbound', 'both'];
+      if (body.direction !== undefined) {
+        if (!VALID_DIRECTIONS.includes(body.direction)) return json(res, { error: `Invalid direction. Must be one of: ${VALID_DIRECTIONS.join(', ')}` }, 400);
+        fields.direction = body.direction;
+      }
+
+      if (Object.keys(fields).length === 0) return json(res, { error: 'No fields to update' }, 400);
+
+      await updateRule(params.id, fields);
+      json(res, { updated: true });
     },
   },
 

@@ -262,6 +262,19 @@ export async function deleteRule(id: string): Promise<void> {
   await adapter.run('DELETE FROM rules WHERE id = ?', [id]);
 }
 
+export async function updateRule(id: string, fields: { type?: string; match_field?: string; match_pattern?: string; priority?: number; direction?: string }): Promise<void> {
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  if (fields.type !== undefined) { sets.push('type = ?'); values.push(fields.type); }
+  if (fields.match_field !== undefined) { sets.push('match_field = ?'); values.push(fields.match_field); }
+  if (fields.match_pattern !== undefined) { sets.push('match_pattern = ?'); values.push(fields.match_pattern); }
+  if (fields.priority !== undefined) { sets.push('priority = ?'); values.push(fields.priority); }
+  if (fields.direction !== undefined) { sets.push('direction = ?'); values.push(fields.direction); }
+  if (sets.length === 0) return;
+  values.push(id);
+  await adapter.run(`UPDATE rules SET ${sets.join(', ')} WHERE id = ?`, values);
+}
+
 /**
  * Automatically create an 'allow' rule for a sender's email address.
  * Used when a message is released from quarantine.
