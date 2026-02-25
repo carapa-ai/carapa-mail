@@ -106,16 +106,24 @@ export async function handleMessage(
     switch (decision.action) {
       case 'pass':
         // Auto-whitelist recipients of outbound mail
-        for (const recipient of session.envelope.rcptTo) {
-          await addToWhitelist(accountId, 'email', recipient.address, 'outbound');
-          // Also whitelist the domain of the recipient
-          const domain = recipient.address.split('@')[1];
-          if (domain) {
-            await addToWhitelist(accountId, 'domain', domain, 'outbound');
-          }
-        }
-        await relayRawMessage(rawBuffer, { from, to }, account);
+        // Accept immediately so the client doesn't time out waiting for relay
         callback();
+        // Relay and whitelist in the background
+        (async () => {
+          try {
+            for (const recipient of session.envelope.rcptTo) {
+              await addToWhitelist(accountId, 'email', recipient.address, 'outbound');
+              // Also whitelist the domain of the recipient
+              const domain = recipient.address.split('@')[1];
+              if (domain) {
+                await addToWhitelist(accountId, 'domain', domain, 'outbound');
+              }
+            }
+            await relayRawMessage(rawBuffer, { from, to }, account);
+          } catch (relayErr) {
+            console.error(`[smtp] Background relay failed: ${relayErr instanceof Error ? relayErr.message : relayErr}`);
+          }
+        })();
         break;
 
       case 'quarantine': {
