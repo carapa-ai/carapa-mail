@@ -553,6 +553,13 @@ const routes: { method: string; pattern: RegExp; handler: RouteHandler }[] = [
         return json(res, { error: 'match_pattern is not a valid regular expression' }, 400);
       }
 
+      // Validate direction (optional, defaults to 'both')
+      const VALID_DIRECTIONS = ['inbound', 'outbound', 'both'];
+      const direction = body.direction || 'both';
+      if (!VALID_DIRECTIONS.includes(direction)) {
+        return json(res, { error: `Invalid direction. Must be one of: ${VALID_DIRECTIONS.join(', ')}` }, 400);
+      }
+
       const id = randomUUID();
       await insertRule({
         id,
@@ -560,6 +567,7 @@ const routes: { method: string; pattern: RegExp; handler: RouteHandler }[] = [
         match_field: body.match_field,
         match_pattern: body.match_pattern,
         priority: typeof body.priority === 'number' ? body.priority : 0,
+        direction,
       });
       json(res, { id }, 201);
     },

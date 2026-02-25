@@ -47,6 +47,7 @@ export interface FilterRule {
   match_field: 'from' | 'to' | 'subject' | 'body';
   match_pattern: string;
   priority: number;
+  direction: 'inbound' | 'outbound' | 'both';
   created_at: string;
 }
 

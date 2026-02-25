@@ -59,6 +59,7 @@ export function getCreateTablesSql(dialect: Dialect): string {
       match_field TEXT NOT NULL,
       match_pattern TEXT NOT NULL,
       priority INTEGER DEFAULT 0,
+      direction TEXT NOT NULL DEFAULT 'both',
       created_at TEXT NOT NULL
     );
 

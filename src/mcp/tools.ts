@@ -177,7 +177,7 @@ export function registerTools(s: McpServer, allowedAccountIds: string[]) {
           to: message.to,
           subject: message.subject,
           body: message.body_text,
-        });
+        }, 'inbound');
 
         const startTime = Date.now();
         let decision;
@@ -342,7 +342,7 @@ export function registerTools(s: McpServer, allowedAccountIds: string[]) {
           to: args.to,
           subject: args.subject,
           body: args.body,
-        });
+        }, 'outbound');
 
         let decision;
         const startTime = Date.now();

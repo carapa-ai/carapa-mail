@@ -149,26 +149,27 @@ async function processMessage(loop: ScannerLoop, uid: number, uidValidity: numbe
     to: emailSummary.to,
     subject: emailSummary.subject,
     body: emailSummary.body,
-  });
+  }, 'inbound');
 
   let decision: FilterDecision;
   const startTime = Date.now();
 
   const isSenderWhitelisted = await isWhitelisted(account.id, from);
 
-  if (isSenderWhitelisted) {
-    decision = {
-      action: 'pass',
-      reason: `Sender ${from} is whitelisted (previous outbound contact or manual whitelist)`,
-      confidence: 1,
-      categories: ['whitelisted'],
-    };
-  } else if (rule) {
+  if (rule) {
+    // Explicit rules always take precedence over auto-whitelisting
     decision = {
       action: rule.type === 'allow' ? 'pass' : rule.type === 'block' ? 'reject' : rule.type,
       reason: `Matched rule: ${rule.match_field} ~ ${rule.match_pattern}`,
       confidence: 1,
       categories: [],
+    };
+  } else if (isSenderWhitelisted) {
+    decision = {
+      action: 'pass',
+      reason: `Sender ${from} is whitelisted (previous outbound contact or manual whitelist)`,
+      confidence: 1,
+      categories: ['whitelisted'],
     };
   } else if (!AUTO_QUARANTINE) {
     decision = { action: 'pass', reason: 'Log-only mode', confidence: 1, categories: [] };

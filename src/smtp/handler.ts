@@ -59,7 +59,7 @@ export async function handleMessage(
       to: emailSummary.to,
       subject: emailSummary.subject,
       body: emailSummary.body,
-    });
+    }, 'outbound');
 
     let decision: FilterDecision;
     const startTime = Date.now();

@@ -148,6 +148,16 @@ const migrations: Migration[] = [
       } catch { }
     },
   },
+  {
+    version: 10,
+    description: 'Add direction column to rules',
+    up: async (adapter, dialect) => {
+      const ifNotExists = dialect === 'postgres' ? ' IF NOT EXISTS' : '';
+      try {
+        await adapter.exec(`ALTER TABLE rules ADD COLUMN${ifNotExists} direction TEXT NOT NULL DEFAULT 'both';`);
+      } catch { }
+    },
+  },
 ];
 
 /**

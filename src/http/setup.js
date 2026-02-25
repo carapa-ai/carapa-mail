@@ -359,12 +359,13 @@ async function loadRules() {
       el.innerHTML = '<div class="empty">No custom rules configured</div>';
       return;
     }
-    let html = '<div class="table-wrap"><table style="table-layout:fixed; width:100%;"><thead><tr><th style="width:10%;">Action</th><th style="width:15%;">Field</th><th style="width:auto%;">Pattern</th><th style="width:15%;">Date added</th><th style="width:100px;"></th></tr></thead><tbody>';
+    let html = '<div class="table-wrap"><table style="table-layout:fixed; width:100%;"><thead><tr><th style="width:10%;">Action</th><th style="width:12%;">Direction</th><th style="width:12%;">Field</th><th style="width:auto%;">Pattern</th><th style="width:15%;">Date added</th><th style="width:100px;"></th></tr></thead><tbody>';
     html += list.map(e => `
       <tr>
         <td style="white-space:nowrap; vertical-align:top;">
           <span class="badge badge-${e.type === 'allow' ? 'ok' : (e.type === 'block' ? 'err' : 'pending')}">${e.type}</span>
         </td>
+        <td style="white-space:nowrap; vertical-align:top; color:#888;">${esc(e.direction || 'both')}</td>
         <td style="white-space:nowrap; vertical-align:top; font-weight:500;">${esc(e.match_field)}</td>
         <td style="vertical-align:top; font-family:monospace; line-break:anywhere;">${esc(e.match_pattern)}</td>
         <td style="white-space:nowrap; vertical-align:top; color:#888;">${new Date(e.created_at).toLocaleDateString()}</td>
@@ -398,7 +399,8 @@ async function handleRuleSubmit(e) {
   const data = {
     type: document.getElementById('r-type').value,
     match_field: document.getElementById('r-field').value,
-    match_pattern: document.getElementById('r-pattern').value
+    match_pattern: document.getElementById('r-pattern').value,
+    direction: document.getElementById('r-direction').value
   };
 
   const submitBtn = document.getElementById('rule-submit');

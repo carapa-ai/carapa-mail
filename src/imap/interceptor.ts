@@ -516,7 +516,7 @@ async function filterAndSanitizeLiteral(
       };
 
       // Check user-defined rules first
-      const rule = await getMatchingRules({ from, to, subject, body });
+      const rule = await getMatchingRules({ from, to, subject, body }, 'inbound');
 
       const startTime = Date.now();
       let decision;

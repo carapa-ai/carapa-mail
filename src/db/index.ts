@@ -251,10 +251,10 @@ export async function listWhitelist(accountId?: string): Promise<{ id: string; t
   return adapter.query('SELECT * FROM whitelist ORDER BY created_at DESC');
 }
 
-export async function insertRule(rule: { id: string; type: string; match_field: string; match_pattern: string; priority?: number }): Promise<void> {
+export async function insertRule(rule: { id: string; type: string; match_field: string; match_pattern: string; priority?: number; direction?: string }): Promise<void> {
   await adapter.run(
-    'INSERT INTO rules (id, type, match_field, match_pattern, priority, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-    [rule.id, rule.type, rule.match_field, rule.match_pattern, rule.priority ?? 0, new Date().toISOString()],
+    'INSERT INTO rules (id, type, match_field, match_pattern, priority, direction, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [rule.id, rule.type, rule.match_field, rule.match_pattern, rule.priority ?? 0, rule.direction ?? 'both', new Date().toISOString()],
   );
 }
 
@@ -292,13 +292,16 @@ export async function autoWhitelistSender(email: string): Promise<void> {
     match_field: 'from',
     match_pattern: pattern,
     priority: 10, // Higher priority than general rules
+    direction: 'inbound',
   });
 }
 
-export async function getMatchingRules(email: { from: string; to: string; subject: string; body: string }): Promise<FilterRule | null> {
+export async function getMatchingRules(email: { from: string; to: string; subject: string; body: string }, direction?: 'inbound' | 'outbound'): Promise<FilterRule | null> {
   const VALID_FIELDS = ['from', 'to', 'subject', 'body'] as const;
   const rules = await listRules();
   for (const rule of rules) {
+    // Skip rules that don't apply to this direction
+    if (direction && rule.direction !== 'both' && rule.direction !== direction) continue;
     if (!VALID_FIELDS.includes(rule.match_field as (typeof VALID_FIELDS)[number])) continue;
     try {
       const re = new RegExp(rule.match_pattern, 'i');

@@ -303,7 +303,7 @@ DELETE /quarantine/:id            — permanently delete
 GET  /audit                       — audit log (?limit=100&offset=0&account=)
 
 GET  /rules                       — list filter rules
-POST /rules                       — create rule (body: {type, match_field, match_pattern, priority})
+POST /rules                       — create rule (body: {type, match_field, match_pattern, priority, direction})
 DELETE /rules/:id                 — delete rule
 ```
 
@@ -317,13 +317,31 @@ Rules are evaluated before the AI agent, in priority order. Rule types:
 | `block` | same | Reject immediately |
 | `quarantine` | same | Quarantine without AI call |
 
-`match_pattern` is a regex (case-insensitive).
+`match_pattern` is a regex (case-insensitive). `direction` controls when the rule applies: `inbound`, `outbound`, or `both` (default).
 
-Example — always allow from your domain:
+**Decision priority (inbound):** explicit rules → auto-whitelist → log-only mode → AI filter.
+**Decision priority (outbound):** DLP (secrets scan) → explicit rules → log-only mode → AI filter.
+
+Rules always take precedence over auto-whitelisting — a `block` rule will override a whitelisted sender.
+
+### Auto-whitelist
+
+When you send an outbound email, the recipients' addresses and domains are automatically added to a whitelist. Replies from those contacts pass through without AI filtering, unless an explicit rule overrides it. The whitelist can be managed from the admin UI or via the API.
+
+### Examples
+
+Always allow from your domain (inbound only):
 ```bash
 curl -X POST http://localhost:3200/rules \
   -H "Content-Type: application/json" \
-  -d '{"type":"allow","match_field":"from","match_pattern":"@yourdomain\\.com$","priority":10}'
+  -d '{"type":"allow","match_field":"from","match_pattern":"@yourdomain\\.com$","priority":10,"direction":"inbound"}'
+```
+
+Block sending to a specific address:
+```bash
+curl -X POST http://localhost:3200/rules \
+  -H "Content-Type: application/json" \
+  -d '{"type":"block","match_field":"to","match_pattern":"^spamtrap@example\\.com$","direction":"outbound"}'
 ```
 
 ## Docker
