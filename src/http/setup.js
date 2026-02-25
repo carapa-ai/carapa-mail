@@ -746,6 +746,7 @@ async function handleSubmit(e) {
         sessionStorage.setItem('carapamail_token', apiToken);
         sessionStorage.setItem('carapamail_auth_mode', 'user');
         document.getElementById('logout-btn').style.display = 'inline-block';
+        document.getElementById('auth-prompt').style.display = 'none';
       }
       showMsg('Account added' + (result.smtp === false ? ' (SMTP not verified)' : ''), 'success');
     } else {
