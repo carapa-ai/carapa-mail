@@ -206,14 +206,20 @@ function setupImapSession(
       const str = data.toString('utf-8');
       logger.debug('imap', `[S]: ${str.trim()}`);
 
-      // Track UIDVALIDITY from server SELECT/EXAMINE responses
-      const validityMatch = str.match(/\[UIDVALIDITY\s+(\d+)\]/);
-      if (validityMatch) {
-        currentUidValidity = parseInt(validityMatch[1], 10);
-        interceptor.setContext(currentFolder, currentUidValidity, account?.id || 'default');
-      }
+      // Track UIDVALIDITY and UIDNEXT from server SELECT/EXAMINE responses
+      const validityMatch = str.match(/\[UIDVALIDITY\s+(\d+)\]/i);
+      const uidNextMatch = str.match(/\[UIDNEXT\s+(\d+)\]/i);
 
       processing = processing.then(async () => {
+        if (validityMatch) {
+          currentUidValidity = parseInt(validityMatch[1], 10);
+        }
+
+        if (validityMatch || uidNextMatch) {
+          const uidNext = uidNextMatch ? parseInt(uidNextMatch[1], 10) : undefined;
+          await interceptor.setContext(currentFolder, currentUidValidity, account?.id || 'default', uidNext);
+        }
+
         try {
           const processed = await interceptor.process(data);
           if (processed.length > 0 && !clientSocket.destroyed) {

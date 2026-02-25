@@ -5,10 +5,11 @@ import { scanAttachments } from '../email/attachment-scanner.js';
 import { scanAuthenticity } from '../email/authenticity.js';
 import { toEmailSummary } from '../email/parser.js';
 import { inspectEmail } from '../agent/filter.js';
-import { getScan, getScannerState, recordScan, logAudit, getMatchingRules } from '../db/index.js';
+import { getScan, getScannerState, setScannerState, recordScan, logAudit, getMatchingRules } from '../db/index.js';
 import { FILTER_CONFIDENCE_THRESHOLD, INCOMING_FOLDER } from '../config.js';
 import type { EmailSummary, FolderPolicy, FolderContext } from '../types.js';
 import { simpleParser } from 'mailparser';
+import { logger } from '../logger.js';
 
 /**
  * Determine the security policy for a given folder.
@@ -253,7 +254,7 @@ export function createInterceptor() {
      * Update the current mailbox context (folder + UIDVALIDITY + account).
      * Called by the proxy when SELECT/EXAMINE responses are seen.
      */
-    setContext(folder: string, uidValidity: number, accountId?: string) {
+    async setContext(folder: string, uidValidity: number, accountId?: string, uidNext?: number) {
       const folderChanged = folder !== context.folder || uidValidity !== context.uidValidity;
       context = {
         folder,
@@ -261,10 +262,24 @@ export function createInterceptor() {
         accountId: accountId || context.accountId,
         policy: getFolderPolicy(folder),
       };
+
       // Clear caches on folder change
       if (folderChanged) {
         scanCache.clear();
         scannerBaseline = null;
+      }
+
+      // Proactively establish baseline if missing and we have uidNext.
+      // This prevents scanning of historical emails when a new account is added
+      // or carapa-mail is installed on a new PC with an existing mailbox.
+      if (uidNext && folder && uidValidity && context.policy.autoQuarantine) {
+        const existing = await getScannerState(folder, context.accountId);
+        if (!existing || existing.uid_validity !== uidValidity) {
+          const lastUid = uidNext - 1;
+          await setScannerState(folder, uidValidity, lastUid, context.accountId);
+          scannerBaseline = { lastUid, ts: Date.now() };
+          logger.info('imap', `[${context.accountId}] Initialized baseline for ${folder}: lastUid=${lastUid} (uidValidity=${uidValidity})`);
+        }
       }
     },
 
@@ -373,7 +388,7 @@ export function createInterceptor() {
             if (gate === 'block' || (gate === 'pending' && !isFullMessage && !isHeaderOnly)) {
               // Replace body literal with warning/placeholder, skip original literal data
               const label = gate === 'pending' ? 'not yet scanned' : 'rejected/quarantined';
-              console.log(`[imap:gate] ${gate.toUpperCase()} uid=${state.currentUid} body literal (${label})`);
+              logger.debug('imap', `[gate] ${gate.toUpperCase()} uid=${state.currentUid} body literal (${label})`);
               const literalHeaderBuf = Buffer.from(literalHeader);
               const headerPos = state.pending.indexOf(literalHeaderBuf);
 
@@ -555,16 +570,16 @@ async function filterAndSanitizeLiteral(
           accountId: ctx.accountId,
         });
 
-        console.log(
-          `[imap:filter] ${decision.action.toUpperCase()} uid=${uid} from=${from} subject="${subject}" (${latencyMs}ms)`,
+        logger.info('imap',
+          `[${ctx.accountId}] ${decision.action.toUpperCase()} uid=${uid} from=${from} subject="${subject}" (${latencyMs}ms)`,
         );
 
         if (decision.action === 'reject' || decision.action === 'quarantine') {
           return buildWarningBody(decision.reason, section);
         }
       } else {
-        console.log(
-          `[imap:filter] UNAVAILABLE uid=${uid} from=${from} subject="${subject}" — prepending warning`,
+        logger.info('imap',
+          `[${ctx.accountId}] AI UNAVAILABLE uid=${uid} from=${from} — passing with warning`,
         );
       }
     } else if (!isFullMessage && !existing) {
