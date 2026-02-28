@@ -194,6 +194,7 @@ Accounts are managed through the setup UI at `/setup` (or via the `/api/accounts
 | `INBOUND_SCAN` | `true` | `false` = disable background IMAP IDLE scanner (Layer 1) |
 | `INBOUND_SCAN_INTERVAL` | `60000` | Polling fallback interval (ms) when IMAP IDLE is unavailable |
 | `DKIM_VERIFY` | `false` | `true` = penalize emails missing DKIM/SPF authentication headers |
+| `HEADER_ANALYSIS_ENABLED` | `true` | AI-powered header forensic analysis for inbound emails. Detects spoofing, relay anomalies, and authentication bypasses. Adds an extra API call per inbound email |
 | `STRIP_REMOTE_IMAGES` | `false` | `true` = block all remote images in HTML emails. Tracking pixel removal is always on |
 | `PII_REDACTION` | `false` | `true` = redact SSNs, credit cards, and API keys in IMAP email content delivered to clients |
 | `MCP_ENABLED` | `false` | Enable MCP server for agent access |

@@ -5,6 +5,46 @@ import type { EmailSummary } from '../types.js';
 
 export { type ParsedMail };
 
+export const SECURITY_HEADERS = [
+  'authentication-results',
+  'received-spf',
+  'reply-to',
+  'return-path',
+  'dkim-signature',
+  'x-php-originating-script',
+  'x-mailer',
+  'x-sender-ip',
+  'received',
+];
+
+/**
+ * Parse RFC822 headers from raw email text or buffer.
+ * Handles line unfolding and multi-value headers.
+ */
+export function parseHeaders(raw: string | Buffer): Record<string, string> {
+  const text = typeof raw === 'string' ? raw : raw.toString('utf-8');
+  const headers: Record<string, string> = {};
+
+  const headerEnd = text.indexOf('\r\n\r\n');
+  const headerBlock = headerEnd > 0 ? text.slice(0, headerEnd) : text.slice(0, 8192);
+
+  // Unfold continuation lines (RFC 2822: CRLF followed by WSP)
+  const unfolded = headerBlock.replace(/\r\n[ \t]+/g, ' ');
+
+  for (const line of unfolded.split('\r\n')) {
+    const colon = line.indexOf(':');
+    if (colon > 0) {
+      const name = line.slice(0, colon).trim().toLowerCase();
+      const value = line.slice(colon + 1).trim();
+      if (name) {
+        // Append multi-value headers (e.g. Received, Authentication-Results)
+        headers[name] = headers[name] ? `${headers[name]}\n${value}` : value;
+      }
+    }
+  }
+  return headers;
+}
+
 export async function parseFromStream(stream: NodeJS.ReadableStream): Promise<{ parsed: ParsedMail; rawBuffer: Buffer }> {
   const chunks: Buffer[] = [];
   for await (const chunk of stream) {

@@ -94,5 +94,8 @@ export const AV_TIMEOUT = parseInt(process.env.AV_TIMEOUT || '30000', 10);
 // DKIM verification — when true, penalizes emails with missing/unverifiable authentication
 export const DKIM_VERIFY = process.env.DKIM_VERIFY === 'true';
 
+// AI-powered header forensic analysis (extra API call per inbound email)
+export const HEADER_ANALYSIS_ENABLED = process.env.HEADER_ANALYSIS_ENABLED !== 'false';
+
 // Strip all remote images from HTML emails (tracking pixel removal is always on)
 export const STRIP_REMOTE_IMAGES = process.env.STRIP_REMOTE_IMAGES === 'true';

@@ -10,6 +10,7 @@ import {
 import { getScannerState, setScannerState, logAudit, getMatchingRules, insertQuarantine, recordScan, getScan, pruneScans, isWhitelisted } from './db/index.js';
 import { inspectEmail } from './agent/filter.js';
 import { getAllAccounts, type Account } from './accounts.js';
+import { parseHeaders, SECURITY_HEADERS } from './email/parser.js';
 import type { FilterDecision, EmailSummary } from './types.js';
 import { randomUUID } from 'crypto';
 import { logger } from './logger.js';
@@ -111,6 +112,7 @@ async function processMessage(loop: ScannerLoop, uid: number, uidValidity: numbe
     flags: true,
     bodyStructure: true,
     uid: true,
+    headers: SECURITY_HEADERS,
   }, { uid: true });
 
   if (!msg) return null;
@@ -141,7 +143,7 @@ async function processMessage(loop: ScannerLoop, uid: number, uidValidity: numbe
     subject,
     body: bodyText.slice(0, 2000),
     attachments: findAttachments(msg.bodyStructure),
-    headers: {},
+    headers: msg.headers ? parseHeaders(msg.headers) : {},
   };
 
   const rule = await getMatchingRules({

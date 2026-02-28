@@ -3,7 +3,7 @@
 import { sanitizeBody, sanitizeHtml } from './sanitizer.js';
 import { scanAttachments } from '../email/attachment-scanner.js';
 import { scanAuthenticity } from '../email/authenticity.js';
-import { toEmailSummary } from '../email/parser.js';
+import { toEmailSummary, parseHeaders, SECURITY_HEADERS } from '../email/parser.js';
 import { inspectEmail } from '../agent/filter.js';
 import { getScan, getScannerState, setScannerState, recordScan, logAudit, getMatchingRules } from '../db/index.js';
 import { FILTER_CONFIDENCE_THRESHOLD, INCOMING_FOLDER } from '../config.js';
@@ -89,27 +89,6 @@ interface MailboxContext {
   accountId: string;
 }
 
-/**
- * Parse RFC822 headers from raw email text.
- * Returns a map of lowercase header name → value.
- */
-function parseHeaders(raw: string): Record<string, string> {
-  const headers: Record<string, string> = {};
-  const headerEnd = raw.indexOf('\r\n\r\n');
-  const headerBlock = headerEnd > 0 ? raw.slice(0, headerEnd) : raw.slice(0, 4096);
-
-  // Unfold continuation lines (lines starting with whitespace)
-  const unfolded = headerBlock.replace(/\r\n[ \t]+/g, ' ');
-  for (const line of unfolded.split('\r\n')) {
-    const colon = line.indexOf(':');
-    if (colon > 0) {
-      const name = line.slice(0, colon).trim().toLowerCase();
-      const value = line.slice(colon + 1).trim();
-      headers[name] = value;
-    }
-  }
-  return headers;
-}
 
 /**
  * Extract body text from raw RFC822 message.

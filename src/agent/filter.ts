@@ -53,12 +53,62 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
+interface HeaderAnalysisReport {
+  is_authentic: boolean;
+  risk_score: number;
+  findings: string[];
+  summary: string;
+}
+
+/**
+ * Perform a technical audit of email headers to detect spoofing and relay anomalies.
+ */
+async function analyzeHeaders(email: EmailSummary, accountId?: string): Promise<HeaderAnalysisReport | null> {
+  const headerContent = Object.entries(email.headers)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join('\n');
+
+  if (!headerContent) return null;
+
+  return enqueue(async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), config.FILTER_TIMEOUT);
+
+    try {
+      const response = await getClient().messages.create(
+        {
+          model: config.ANTHROPIC_MODEL,
+          max_tokens: 1024,
+          system: getFilterPrompt('header-analysis', accountId),
+          messages: [{ role: 'user', content: `Analyze these email headers:\n\n${headerContent}` }],
+        },
+        { signal: controller.signal },
+      );
+
+      clearTimeout(timeout);
+
+      const text = response.content.find(block => block.type === 'text');
+      if (!text || text.type !== 'text') return null;
+
+      let json = text.text.trim();
+      if (json.startsWith('```')) {
+        json = json.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+      }
+
+      return JSON.parse(json) as HeaderAnalysisReport;
+    } catch (err) {
+      logger.warn('filter', `Header analysis failed: ${err instanceof Error ? err.message : String(err)}`);
+      return null;
+    } finally {
+      clearTimeout(timeout);
+    }
+  });
+}
+
 /**
  * Build the metadata header that prefixes every chunk.
- * This includes direction, addresses, subject, headers, DLP, authenticity,
- * URL analysis and attachments — everything except the body.
  */
-function buildMeta(email: EmailSummary): string {
+function buildMeta(email: EmailSummary, headerReport?: HeaderAnalysisReport | null): string {
   const redactedSubject = redact(email.subject);
 
   const parts = [
@@ -67,9 +117,24 @@ function buildMeta(email: EmailSummary): string {
     `To: ${email.to}`,
     `Subject: ${redactedSubject}`,
     '',
-    'Headers:',
-    ...Object.entries(email.headers).slice(0, 10).map(([k, v]) => `  ${k}: ${v}`),
+    'Headers (Audit-relevant):',
+    ...Object.entries(email.headers)
+      .filter(([k]) => k !== 'received') // Exclude raw Received chains from the main prompt to save tokens
+      .slice(0, 15)
+      .map(([k, v]) => `  ${k}: ${v}`),
   ];
+
+  if (headerReport) {
+    parts.push('', '--- TECHNICAL HEADER AUDIT REPORT ---');
+    parts.push(`Authentic: ${headerReport.is_authentic ? 'YES' : 'NO'}`);
+    parts.push(`Technical Risk Score: ${headerReport.risk_score}`);
+    parts.push(`Auditor Summary: ${headerReport.summary}`);
+    if (headerReport.findings.length > 0) {
+      parts.push('Forensic Findings:');
+      for (const f of headerReport.findings) parts.push(`  - ${f}`);
+    }
+    parts.push('-------------------------------------');
+  }
 
   // DLP (Data Loss Prevention) Analysis
   const dlpScan = scanDlp(`${email.subject}\n${email.body}`);
@@ -132,8 +197,8 @@ function buildMeta(email: EmailSummary): string {
   return parts.join('\n');
 }
 
-function buildSummary(email: EmailSummary): string {
-  const meta = buildMeta(email);
+function buildSummary(email: EmailSummary, headerReport?: HeaderAnalysisReport | null): string {
+  const meta = buildMeta(email, headerReport);
   // When chunking is disabled, truncate body to 2000 chars as before
   const bodyLimit = config.AGENT_CHUNK_TOKENS > 0 ? email.body.length : 2000;
   const redactedBody = redact(email.body.slice(0, bodyLimit));
@@ -153,12 +218,12 @@ function buildSummary(email: EmailSummary): string {
  * Each chunk includes the metadata header + a portion of the body.
  * Returns a single-element array when chunking is unnecessary.
  */
-function splitIntoChunks(email: EmailSummary): string[] {
+function splitIntoChunks(email: EmailSummary, headerReport?: HeaderAnalysisReport | null): string[] {
   if (config.AGENT_CHUNK_TOKENS <= 0) {
-    return [buildSummary(email)];
+    return [buildSummary(email, headerReport)];
   }
 
-  const meta = buildMeta(email);
+  const meta = buildMeta(email, headerReport);
   const charsPerToken = 3.5;
   // Body budget = total token limit expressed in chars.
   // Meta is always prepended to every chunk for context but doesn't reduce the body slice size.
@@ -315,23 +380,23 @@ function analyzeChunk(content: string, filterContext: FilterContext, accountId?:
 
     clearTimeout(timeout);
 
-  const text = response.content.find(block => block.type === 'text');
-  if (!text || text.type !== 'text') throw new Error(`AI returned no text block (got ${response.content.length} blocks: ${response.content.map(b => b.type).join(', ') || 'empty'})`);
+    const text = response.content.find(block => block.type === 'text');
+    if (!text || text.type !== 'text') throw new Error(`AI returned no text block (got ${response.content.length} blocks: ${response.content.map(b => b.type).join(', ') || 'empty'})`);
 
-  // Parse JSON from response, tolerating markdown fences
-  let json = text.text.trim();
-  if (json.startsWith('```')) {
-    json = json.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
-  }
+    // Parse JSON from response, tolerating markdown fences
+    let json = text.text.trim();
+    if (json.startsWith('```')) {
+      json = json.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+    }
 
-  const parsed = JSON.parse(json);
-  return {
-    action: parsed.action || 'quarantine',
-    reason: parsed.reason || 'Unknown',
-    confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.5,
-    categories: Array.isArray(parsed.categories) ? parsed.categories : [],
-    move_to: typeof parsed.move_to === 'string' ? parsed.move_to : undefined,
-  };
+    const parsed = JSON.parse(json);
+    return {
+      action: parsed.action || 'quarantine',
+      reason: parsed.reason || 'Unknown',
+      confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.5,
+      categories: Array.isArray(parsed.categories) ? parsed.categories : [],
+      move_to: typeof parsed.move_to === 'string' ? parsed.move_to : undefined,
+    };
   });
 }
 
@@ -346,7 +411,14 @@ export async function inspectEmail(email: EmailSummary, contextOverride?: Filter
   }
 
   const filterContext: FilterContext = contextOverride ?? email.direction;
-  const chunks = splitIntoChunks(email);
+
+  // 1. Header Analysis pass (inbound only, if not already bypassed by rules/whitelist)
+  let headerReport: HeaderAnalysisReport | null = null;
+  if (config.HEADER_ANALYSIS_ENABLED && filterContext === 'inbound' && Object.keys(email.headers).length > 0) {
+    headerReport = await analyzeHeaders(email, accountId);
+  }
+
+  const chunks = splitIntoChunks(email, headerReport);
 
   try {
     // Analyze all chunks (sequentially to respect rate limits)

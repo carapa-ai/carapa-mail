@@ -4,9 +4,9 @@ import { ImapFlow } from 'imapflow';
 import { IMAP_PROXY_PORT } from '../config.js';
 import { getAllAccounts, getAccountById, getAccountByEmail, type Account } from '../accounts.js';
 import { sanitizeBody, sanitizeHtml } from '../imap/sanitizer.js';
+import { parseHeaders, SECURITY_HEADERS } from '../email/parser.js';
 import { logger } from '../logger.js';
 
-const SECURITY_HEADERS = ['authentication-results', 'received-spf', 'reply-to', 'return-path', 'dkim-signature'];
 
 // Per-account client pool
 const clients = new Map<string, ImapFlow>();
@@ -224,20 +224,7 @@ export async function getMessage(folder: string, uid: number, accountId?: string
     if (!msg) return null;
 
     // Parse security-relevant headers
-    const rawHeaders: Record<string, string> = {};
-    if (msg.headers) {
-      const headerBuf = Buffer.isBuffer(msg.headers) ? msg.headers : Buffer.from(msg.headers);
-      const headerText = headerBuf.toString('utf-8');
-      for (const line of headerText.split(/\r?\n/)) {
-        const idx = line.indexOf(':');
-        if (idx > 0) {
-          const key = line.slice(0, idx).trim().toLowerCase();
-          const value = line.slice(idx + 1).trim();
-          // Append to existing value for multi-value headers like authentication-results
-          rawHeaders[key] = rawHeaders[key] ? `${rawHeaders[key]}, ${value}` : value;
-        }
-      }
-    }
+    const rawHeaders = msg.headers ? parseHeaders(msg.headers) : {};
 
     // Get text body (unsanitized — sanitization deferred to tools.ts after AI filter)
     let bodyText = '';

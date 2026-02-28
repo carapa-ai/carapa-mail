@@ -22,11 +22,15 @@ function loadPrompt(filename: string): string {
 let inboundPrompt: string | null = null;
 let inboundAgentPrompt: string | null = null;
 let outboundPrompt: string | null = null;
+let headerAnalysisPrompt: string | null = null;
 
-export type FilterContext = 'inbound' | 'outbound' | 'inbound-agent';
+export type FilterContext = 'inbound' | 'outbound' | 'inbound-agent' | 'header-analysis';
 
 function getDefaultPrompt(context: FilterContext): string {
   switch (context) {
+    case 'header-analysis':
+      if (!headerAnalysisPrompt) headerAnalysisPrompt = loadPrompt('header-analysis.md');
+      return headerAnalysisPrompt;
     case 'inbound':
       if (!inboundPrompt) inboundPrompt = loadPrompt('inbound-filter.md');
       return inboundPrompt;
@@ -49,10 +53,13 @@ export function getFilterPrompt(context: FilterContext, accountId?: string): str
         'inbound': { mode: account.customInboundPromptMode, text: account.customInboundPrompt },
         'outbound': { mode: account.customOutboundPromptMode, text: account.customOutboundPrompt },
         'inbound-agent': { mode: account.customAgentPromptMode, text: account.customAgentPrompt },
+        'header-analysis': { mode: 'replace', text: '' },
       } as const;
-      const { mode, text } = modeMap[context];
-      if (mode === 'replace' && text && ALLOW_PROMPT_OVERRIDE) return text;
-      if (mode === 'append' && text && ALLOW_PROMPT_APPEND) return defaultPrompt + '\n\n' + text;
+      if (context in modeMap) {
+        const { mode, text } = modeMap[context as keyof typeof modeMap];
+        if (mode === 'replace' && text && ALLOW_PROMPT_OVERRIDE) return text;
+        if (mode === 'append' && text && ALLOW_PROMPT_APPEND) return defaultPrompt + '\n\n' + text;
+      }
     }
   }
 
