@@ -1,5 +1,16 @@
 node_modules
 store
 .env*
-*.md
 .git
+*.md
+LICENSE
+certs
+group
+groups
+ipc
+webmail
+scripts
+docker-compose*.yml
+.vscode
+push.sh
+bunfig.toml
