@@ -1,7 +1,9 @@
 services:
   carapamail:
     build: .
+    image: carapamail:latest
     restart: unless-stopped
+    init: true
     read_only: true
     cap_drop:
       - ALL
@@ -11,11 +13,10 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      # Bind to localhost only — use a reverse proxy for remote access
-      - "127.0.0.1:${SMTP_PORT:-2525}:${SMTP_PORT:-2525}"   # SMTP proxy
-      - "127.0.0.1:${IMAP_PROXY_PORT:-1993}:${IMAP_PROXY_PORT:-1993}"   # IMAP proxy
-      - "127.0.0.1:${HTTP_PORT:-3200}:${HTTP_PORT:-3200}"   # Admin UI + API
-      - "127.0.0.1:${MCP_PORT:-3466}:${MCP_PORT:-3466}" # MCP server (uncomment if MCP_ENABLED=true)
+      - "127.0.0.1:${SMTP_PORT:-2525}:${SMTP_PORT:-2525}"
+      - "127.0.0.1:${IMAP_PROXY_PORT:-1993}:${IMAP_PROXY_PORT:-1993}"
+      - "127.0.0.1:${HTTP_PORT:-3200}:${HTTP_PORT:-3200}"
+      - "127.0.0.1:${MCP_PORT:-3466}:${MCP_PORT:-3466}"
     volumes:
       - store:/app/store
       - ./prompts:/app/prompts:ro
@@ -28,8 +29,17 @@ services:
     environment:
       DB_TYPE: postgres
       DATABASE_URL: postgres://carapamail:${POSTGRES_PASSWORD}@postgres:5432/carapamail
-    mem_limit: 512m
-    pids_limit: 128
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:${HTTP_PORT:-3200}/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          pids: 128
 
   postgres:
     image: postgres:17-alpine
@@ -45,7 +55,6 @@ services:
       - CHOWN
     security_opt:
       - no-new-privileges:true
-    # Not exposed to the host — only accessible from carapamail via the internal network
     expose:
       - "5432"
     volumes:
@@ -63,8 +72,11 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-    mem_limit: 256m
-    pids_limit: 64
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          pids: 64
 
 volumes:
   store:

@@ -347,7 +347,31 @@ curl -X POST http://localhost:3200/rules \
 
 ## Docker
 
-Two Docker Compose files are provided — pick the one that matches your needs.
+### Build
+
+```bash
+# Build the hardened image (Alpine-based, multi-stage, non-root)
+./build.sh
+
+# Force rebuild without cache
+./build.sh --no-cache
+```
+
+The build script also runs a CVE scan (via Docker Scout or Trivy) if available.
+
+### Start / Stop
+
+Use `start.sh` to manage all configurations:
+
+```bash
+./start.sh                       # SQLite (default)
+./start.sh --postgres            # PostgreSQL
+./start.sh --webmail             # SQLite + SnappyMail webmail
+./start.sh --postgres --webmail  # PostgreSQL + webmail
+./start.sh --down                # Stop all services
+```
+
+Three Docker Compose files are provided — pick the one that matches your needs.
 
 ### SQLite (default)
 
@@ -380,12 +404,14 @@ CarapaMail waits for PostgreSQL to pass its healthcheck before starting. The dat
 
 ### Security hardening
 
-Both compose files apply the same hardening:
+All compose files apply the same hardening:
 
+- **Hardened image** — Alpine-based, multi-stage build, pinned Bun version, SUID/SGID bits stripped, non-root user (UID 1000)
 - **Read-only filesystem** — only the `store` volume and `/tmp` (tmpfs) are writable
-- **All capabilities dropped** — `cap_drop: ALL` (PostgreSQL gets the 4 it needs: `DAC_OVERRIDE`, `FOWNER`, `SETGID`, `SETUID`)
+- **All capabilities dropped** — `cap_drop: ALL` (PostgreSQL gets the minimum it needs: `DAC_OVERRIDE`, `FOWNER`, `SETGID`, `SETUID`, `CHOWN`)
 - **No privilege escalation** — `no-new-privileges:true`
-- **Localhost-only ports** — all ports bind to `127.0.0.1`; use a reverse proxy (Caddy, nginx) for remote access
+- **Init process** — `init: true` for proper signal handling and zombie reaping
+- **Healthcheck** — automatic container health monitoring via `/health` endpoint
 - **Resource limits** — memory and PID caps prevent runaway processes
 - **PostgreSQL not exposed** — only reachable by carapamail over the internal Docker network
 
@@ -396,7 +422,7 @@ Both compose files apply the same hardening:
 | 2525 | SMTP proxy | `SMTP_PORT` |
 | 1993 | IMAP proxy | `IMAP_PROXY_PORT` |
 | 3200 | Admin UI + API | `HTTP_PORT` |
-| 3466 | MCP server | `MCP_PORT` (disabled by default — uncomment in compose file) |
+| 3466 | MCP server | `MCP_PORT` |
 
 ### Customizing filter prompts
 
@@ -408,11 +434,13 @@ docker compose restart carapamail
 
 ### Connecting to host services
 
-If `ANTHROPIC_BASE_URL` points to a service running on the host machine:
+If `ANTHROPIC_BASE_URL` points to a service running on the host machine (e.g. Ollama, llama.cpp, LiteLLM):
 
 ```bash
-ANTHROPIC_BASE_URL=http://host.docker.internal:8080
+ANTHROPIC_BASE_URL=http://host.docker.internal:8880
 ```
+
+The `host.docker.internal` hostname is automatically resolved to the host gateway.
 
 ### Sandbox stack
 

@@ -1,21 +1,19 @@
 services:
   carapamail:
     build: .
+    image: carapamail:latest
     restart: unless-stopped
+    init: true
     read_only: true
     cap_drop:
       - ALL
     security_opt:
       - no-new-privileges:true
     ports:
-      - "${SMTP_PORT:-2525}:${SMTP_PORT:-2525}"   # SMTP proxy
-      - "${IMAP_PROXY_PORT:-1993}:${IMAP_PROXY_PORT:-1993}"   # IMAP proxy
-      - "${HTTP_PORT:-3200}:${HTTP_PORT:-3200}"   # Admin UI + API
-      - "127.0.0.1:${MCP_PORT:-3466}:${MCP_PORT:-3466}" # MCP server (localhost only)
-# For debugging:      
-      - "127.0.0.1:9229:9229" 
-    command: bun --inspect=0.0.0.0:9229 src/index.ts 
-
+      - "${SMTP_PORT:-2525}:${SMTP_PORT:-2525}"
+      - "${IMAP_PROXY_PORT:-1993}:${IMAP_PROXY_PORT:-1993}"
+      - "${HTTP_PORT:-3200}:${HTTP_PORT:-3200}"
+      - "127.0.0.1:${MCP_PORT:-3466}:${MCP_PORT:-3466}"
     volumes:
       - store:/app/store
       - ./prompts:/app/prompts:ro
@@ -25,9 +23,17 @@ services:
       - .env
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    mem_limit: 512m
-    pids_limit: 128
-
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:${HTTP_PORT:-3200}/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          pids: 128
 
 volumes:
   store:
