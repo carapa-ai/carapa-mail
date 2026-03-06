@@ -2,7 +2,7 @@
 #   docker compose -f docker-compose.yml -f docker-compose.webmail.yml up -d
 services:
   snappymail:
-    image: djmaze/snappymail:latest
+    image: snappymail:latest
     restart: unless-stopped
     init: true
     depends_on:
@@ -12,10 +12,10 @@ services:
       - "127.0.0.1:${WEBMAIL_PORT:-8888}:8888"
     volumes:
       - snappymail-data:/var/lib/snappymail
-      - ./webmail:/webmail-config:ro
+      - ./webmail/entrypoint.sh:/webmail-entrypoint.sh:ro
     tmpfs:
       - /tmp:noexec,nosuid,size=64m
-    entrypoint: ["/webmail-config/entrypoint.sh"]
+    entrypoint: ["/webmail-entrypoint.sh"]
     environment:
       IMAP_PROXY_PORT: ${IMAP_PROXY_PORT:-1993}
       SMTP_PORT: ${SMTP_PORT:-2525}

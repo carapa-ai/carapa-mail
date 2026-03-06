@@ -14,20 +14,20 @@ if [[ "${1:-}" == "--no-cache" ]]; then
     shift
 fi
 
-IMAGE="carapamail:latest"
+echo ""
+echo "Building carapamail:latest...${BUILD_ARGS:+ (no cache)}"
+docker build $BUILD_ARGS -t "carapamail:latest" .
 
 echo ""
-echo "Building $IMAGE...${BUILD_ARGS:+ (no cache)}"
-docker build $BUILD_ARGS -t "$IMAGE" .
+echo "Building snappymail:latest...${BUILD_ARGS:+ (no cache)}"
+docker build $BUILD_ARGS -t "snappymail:latest" webmail/
 
 # Pull third-party images if not present
-for DEP_IMAGE in postgres:17-alpine djmaze/snappymail:latest; do
-    if ! docker image inspect "$DEP_IMAGE" >/dev/null 2>&1; then
-        echo ""
-        echo "Pulling $DEP_IMAGE..."
-        docker pull "$DEP_IMAGE"
-    fi
-done
+if ! docker image inspect "postgres:17-alpine" >/dev/null 2>&1; then
+    echo ""
+    echo "Pulling postgres:17-alpine..."
+    docker pull "postgres:17-alpine"
+fi
 
 # CVE scan
 scan_image() {
@@ -44,9 +44,9 @@ scan_image() {
     fi
 }
 
-scan_image "$IMAGE"
+scan_image "carapamail:latest"
+scan_image "snappymail:latest"
 scan_image "postgres:17-alpine"
-scan_image "djmaze/snappymail:latest"
 
 echo ""
 echo "Done."

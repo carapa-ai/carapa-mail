@@ -371,6 +371,8 @@ Use `start.sh` to manage all configurations:
 ./start.sh --down                # Stop all services
 ```
 
+When using `--webmail`, SnappyMail connects to CarapaMail over the internal Docker network without TLS, so you must set `ALLOW_INSECURE_AUTH=true` in your `.env` file. See [ALLOW_INSECURE_AUTH](#configuration) for details.
+
 Three Docker Compose files are provided — pick the one that matches your needs.
 
 ### SQLite (default)
