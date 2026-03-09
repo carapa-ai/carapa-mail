@@ -20,7 +20,7 @@ LABEL org.opencontainers.image.title="carapa-mail" \
       org.opencontainers.image.description="AI-powered SMTP + IMAP proxy with security scanning" \
       org.opencontainers.image.version="0.9.0"
 
-RUN apk add --no-cache bash ca-certificates libstdc++ libgcc wget openssl
+RUN apk upgrade --no-cache && apk add --no-cache bash ca-certificates libstdc++ libgcc wget openssl
 
 # Bun runtime
 COPY --from=build /opt/bun /opt/bun
