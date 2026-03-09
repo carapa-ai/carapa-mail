@@ -1,11 +1,11 @@
 # ── Build stage ────────────────────────────────────────────────────
 FROM alpine:3.23 AS build
 
-RUN apk add --no-cache bash curl libstdc++ libgcc
+RUN apk upgrade --no-cache && apk add --no-cache bash curl libstdc++ libgcc
 
-# Install Bun
-ARG BUN_VERSION=1.2.5
-RUN curl -fsSL https://bun.sh/install | BUN_INSTALL=/opt/bun bash -s "bun-v${BUN_VERSION}" \
+# Install Bun (latest at build time)
+ENV BUN_INSTALL="/opt/bun"
+RUN curl -fsSL https://bun.sh/install | bash \
     && ln -s /opt/bun/bin/bun /usr/local/bin/bun
 
 WORKDIR /app
