@@ -6,7 +6,7 @@ import fs from 'fs';
 // ── Docker Compose file-based secrets ──────────────────────────────────
 // Reads from /run/secrets/<name> first, falls back to process.env.
 const SECRETS_DIR = process.env.SECRETS_DIR || '/run/secrets';
-function readSecret(envName: string): string {
+export function readSecret(envName: string): string {
   try {
     const val = fs.readFileSync(path.join(SECRETS_DIR, envName.toLowerCase()), 'utf8').trim();
     if (val) return val;

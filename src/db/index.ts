@@ -3,7 +3,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import { STORE_DIR } from '../config.js';
+import { STORE_DIR, readSecret } from '../config.js';
 import type { QuarantineEntry, AuditEntry, FilterRule, FilterDecision } from '../types.js';
 import type { DbAdapter, Dialect } from './adapter.js';
 import { runMigrations } from './migrations.js';
@@ -17,8 +17,17 @@ export async function initDatabase(): Promise<void> {
 
   if (dbType === 'postgres') {
     const { PgAdapter } = await import('./pg-adapter.js');
-    const url = process.env.DATABASE_URL;
+    let url = process.env.DATABASE_URL;
     if (!url) throw new Error('DATABASE_URL is required when DB_TYPE=postgres');
+    // Inject postgres password from Docker secret into connection URL
+    const pgPassword = readSecret('POSTGRES_PASSWORD');
+    if (pgPassword) {
+      const parsed = new URL(url);
+      if (!parsed.password) {
+        parsed.password = pgPassword;
+        url = parsed.toString();
+      }
+    }
     adapter = await PgAdapter.create(url);
   } else {
     const { SqliteAdapter } = await import('./sqlite-adapter.js');
