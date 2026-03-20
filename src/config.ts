@@ -3,6 +3,17 @@
 import path from 'path';
 import fs from 'fs';
 
+// ── Docker Compose file-based secrets ──────────────────────────────────
+// Reads from /run/secrets/<name> first, falls back to process.env.
+const SECRETS_DIR = process.env.SECRETS_DIR || '/run/secrets';
+function readSecret(envName: string): string {
+  try {
+    const val = fs.readFileSync(path.join(SECRETS_DIR, envName.toLowerCase()), 'utf8').trim();
+    if (val) return val;
+  } catch { /* ignore */ }
+  return process.env[envName] || '';
+}
+
 // Load .env file into process.env
 const projectRoot = process.cwd();
 const envFile = path.join(projectRoot, '.env');
@@ -37,21 +48,21 @@ export const BIND_HOST = process.env.BIND_HOST || '127.0.0.1';
 export const ALLOW_INSECURE_AUTH = process.env.ALLOW_INSECURE_AUTH === 'true';
 
 // AI filtering
-export const ANTHROPIC_AUTH_TOKEN = process.env.ANTHROPIC_AUTH_TOKEN || '';
+export const ANTHROPIC_AUTH_TOKEN = readSecret('ANTHROPIC_AUTH_TOKEN');
 export const AI_FEATURES_ENABLED = process.env.AI_FEATURES_ENABLED !== 'false';
 export const ANTHROPIC_BASE_URL = process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
 export const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
 export const FILTER_CONFIDENCE_THRESHOLD = parseFloat(process.env.FILTER_CONFIDENCE_THRESHOLD || '0.7');
 
 // Admin
-export const HTTP_API_TOKEN = process.env.HTTP_API_TOKEN || '';
+export const HTTP_API_TOKEN = readSecret('HTTP_API_TOKEN');
 export const ALLOW_SIGNUP = process.env.ALLOW_SIGNUP === 'true';
 export const PUBLIC_HOSTNAME = process.env.PUBLIC_HOSTNAME || '';
 export const ALLOW_PROMPT_OVERRIDE = process.env.ALLOW_PROMPT_OVERRIDE !== 'false';
 export const ALLOW_PROMPT_APPEND = process.env.ALLOW_PROMPT_APPEND !== 'false';
 
 // Encryption (optional — auto-generated if not set)
-export const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || '';
+export const ENCRYPTION_KEY = readSecret('ENCRYPTION_KEY');
 
 // TLS Certificates (optional — auto-generated if not set)
 export const TLS_CERT_PATH = process.env.TLS_CERT_PATH || '';
