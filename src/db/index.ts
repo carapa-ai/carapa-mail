@@ -20,7 +20,7 @@ export async function initDatabase(): Promise<void> {
     let url = process.env.DATABASE_URL;
     if (!url) throw new Error('DATABASE_URL is required when DB_TYPE=postgres');
     // Inject postgres password from Docker secret into connection URL
-    const pgPassword = readSecret('POSTGRES_PASSWORD');
+    const pgPassword = readSecret('CARAPA_MAIL_POSTGRES', 'carapa_mail_postgres');
     if (pgPassword) {
       const parsed = new URL(url);
       if (!parsed.password) {

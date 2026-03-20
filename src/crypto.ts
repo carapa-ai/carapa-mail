@@ -15,16 +15,16 @@ let encryptionKey: Buffer | null = null;
 
 /**
  * Get or generate the master encryption key.
- * Priority: ENCRYPTION_KEY env var → persisted file in store/ → auto-generate and persist.
+ * Priority: CARAPA_MAIL_ENCRYPTION_KEY env var → persisted file in store/ → auto-generate and persist.
  */
 export function getEncryptionKey(): Buffer {
   if (encryptionKey) return encryptionKey;
 
-  const envKey = process.env.ENCRYPTION_KEY;
+  const envKey = process.env.CARAPA_MAIL_ENCRYPTION_KEY;
   if (envKey) {
     encryptionKey = Buffer.from(envKey, 'hex');
     if (encryptionKey.length !== 32) {
-      throw new Error('ENCRYPTION_KEY must be 64 hex characters (32 bytes)');
+      throw new Error('CARAPA_MAIL_ENCRYPTION_KEY must be 64 hex characters (32 bytes)');
     }
     return encryptionKey;
   }

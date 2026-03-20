@@ -36,7 +36,7 @@ import {
 import { getSetupPage } from './setup-ui.js';
 import {
   ALLOW_SIGNUP,
-  HTTP_API_TOKEN,
+  CARAPA_MAIL_TOKEN,
   PUBLIC_HOSTNAME,
   SMTP_PORT,
   IMAP_PROXY_PORT,
@@ -128,7 +128,7 @@ const routes: { method: string; pattern: RegExp; handler: RouteHandler }[] = [
     handler: async (_req, res) => {
       html(res, getSetupPage({
         allowSignup: ALLOW_SIGNUP,
-        hasToken: !!HTTP_API_TOKEN,
+        hasToken: !!CARAPA_MAIL_TOKEN,
         publicHostname: PUBLIC_HOSTNAME,
         smtpPort: SMTP_PORT,
         imapProxyPort: IMAP_PROXY_PORT,

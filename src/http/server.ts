@@ -1,7 +1,7 @@
 // Required Notice: Copyright Regun Software SRL (https://carapa.ai)
 
 import http from 'http';
-import { HTTP_PORT, HTTP_API_TOKEN, ALLOW_SIGNUP, PUBLIC_HOSTNAME, BIND_HOST } from '../config.js';
+import { HTTP_PORT, CARAPA_MAIL_TOKEN, ALLOW_SIGNUP, PUBLIC_HOSTNAME, BIND_HOST } from '../config.js';
 import { authenticateAccount } from '../accounts.js';
 import { matchRoute } from './routes.js';
 
@@ -67,7 +67,7 @@ export function startHttpServer(): http.Server {
 
     // Determine auth role
     const authHeader = req.headers.authorization || '';
-    if (authHeader === `Bearer ${HTTP_API_TOKEN}` && HTTP_API_TOKEN) {
+    if (authHeader === `Bearer ${CARAPA_MAIL_TOKEN}` && CARAPA_MAIL_TOKEN) {
       req.carapamailAuth = { type: 'admin' };
     } else if (authHeader.startsWith('Basic ')) {
       // Rate limit check for Basic auth
@@ -96,7 +96,7 @@ export function startHttpServer(): http.Server {
     }
 
     if (!req.carapamailAuth) {
-      if (!HTTP_API_TOKEN && isLocal) {
+      if (!CARAPA_MAIL_TOKEN && isLocal) {
         // No token configured — only allow local admin access
         req.carapamailAuth = { type: 'admin' };
       } else if (isPublic) {

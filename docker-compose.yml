@@ -21,8 +21,8 @@ services:
       - /tmp:noexec,nosuid,size=64m
     secrets:
       - anthropic_auth_token
-      - http_api_token
-      - encryption_key
+      - carapa_mail_token
+      - carapa_mail_encryption_key
     env_file:
       - .env
     environment:
@@ -47,7 +47,7 @@ volumes:
 secrets:
   anthropic_auth_token:
     file: ${SECRETS_DIR}/anthropic_api_key
-  http_api_token:
+  carapa_mail_token:
     file: ${SECRETS_DIR}/carapa_mail_token
-  encryption_key:
-    file: ${SECRETS_DIR}/encryption_key
+  carapa_mail_encryption_key:
+    file: ${SECRETS_DIR}/carapa_mail_encryption_key

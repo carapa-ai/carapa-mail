@@ -137,7 +137,7 @@ The setup UI at `/setup` is how users and admins manage accounts and configure f
 
 The UI supports three access modes:
 
-- **Admin** — authenticates with the `HTTP_API_TOKEN` bearer token. Can see, create, edit, and delete all accounts.
+- **Admin** — authenticates with the `CARAPA_MAIL_TOKEN` bearer token. Can see, create, edit, and delete all accounts.
 - **User** — authenticates with their email + CarapaMail password. Can edit and delete only their own account (including all settings, permissions, and prompts).
 - **Guest** — when `ALLOW_SIGNUP=true` and an API token is set, unauthenticated visitors can create a new account directly. After signup, they're automatically logged in as a user.
 
@@ -182,7 +182,7 @@ Accounts are managed through the setup UI at `/setup` (or via the `/api/accounts
 | `ANTHROPIC_AUTH_TOKEN` | — | LLM API key (required for AI filtering) |
 | `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | API base URL. Override to use a local proxy or alternative endpoint |
 | `ANTHROPIC_MODEL` | `claude-haiku-4-5-20251001` | Model for filtering. Haiku is recommended for low latency and cost |
-| `ENCRYPTION_KEY` | (auto-generated) | 32-byte hex key for AES-256-GCM password encryption. If not set, a key is generated at `store/.encryption-key` (mode 0600). **Back this up** — if lost, all stored passwords are unrecoverable |
+| `CARAPA_MAIL_ENCRYPTION_KEY` | (auto-generated) | 32-byte hex key for AES-256-GCM password encryption. If not set, a key is generated at `store/.encryption-key` (mode 0600). **Back this up** — if lost, all stored passwords are unrecoverable |
 | `FILTER_CONFIDENCE_THRESHOLD` | `0.7` | Below this confidence score, quarantine instead of hard-reject |
 | `FILTER_TIMEOUT` | `30000` | AI API call timeout (ms). Local models need more time than cloud APIs |
 | `MAX_PARALLEL_AI_CALLS` | `1` | Max concurrent AI requests. `1` = serial (safe for local models like Ollama/llama.cpp). Increase for cloud APIs |
@@ -200,7 +200,7 @@ Accounts are managed through the setup UI at `/setup` (or via the `/api/accounts
 | `MCP_ENABLED` | `false` | Enable MCP server for agent access |
 | `MCP_PORT` | `3466` | MCP server port |
 | `MCP_PUBLIC_URL` | — | Full public URL for the MCP endpoint shown in the setup UI (e.g. `https://mail.example.com:3466/mcp`). Falls back to `https://<PUBLIC_HOSTNAME>:<MCP_PORT>/mcp` |
-| `HTTP_API_TOKEN` | — | Bearer token for admin API (empty = no auth). Set this in production |
+| `CARAPA_MAIL_TOKEN` | — | Bearer token for admin API (empty = no auth). Set this in production |
 | `ALLOW_SIGNUP` | `false` | `true` = guests can create accounts via `/setup` without the admin API token |
 | `ALLOW_PROMPT_OVERRIDE` | `true` | `false` = prevent accounts from replacing the system filter prompt with a custom one |
 | `ALLOW_PROMPT_APPEND` | `true` | `false` = prevent accounts from appending custom text to the system filter prompt |
@@ -283,7 +283,7 @@ All list/search tools return paginated results with `{ items, total, page, total
 
 ## Admin API
 
-All endpoints return JSON. If `HTTP_API_TOKEN` is set, include `Authorization: Bearer <token>`.
+All endpoints return JSON. If `CARAPA_MAIL_TOKEN` is set, include `Authorization: Bearer <token>`.
 
 ```
 GET  /setup                       — account management UI
@@ -395,7 +395,7 @@ For larger deployments with many accounts or when you want a proper database.
 # Set your API key and a Postgres password
 cat > .env <<EOF
 ANTHROPIC_AUTH_TOKEN=sk-ant-...
-POSTGRES_PASSWORD=change-me-to-something-strong
+CARAPA_MAIL_POSTGRES=change-me-to-something-strong
 EOF
 
 # Start

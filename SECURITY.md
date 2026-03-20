@@ -106,16 +106,16 @@ The MCP path uses a stricter AI prompt because AI agents are more vulnerable tha
 
 | Asset | Protection | Details |
 |-------|-----------|---------|
-| IMAP/SMTP passwords | AES-256-GCM encryption at rest | Key from `ENCRYPTION_KEY` env var or auto-generated at `store/.encryption-key` (mode 0600) |
+| IMAP/SMTP passwords | AES-256-GCM encryption at rest | Key from `CARAPA_MAIL_ENCRYPTION_KEY` env var or auto-generated at `store/.encryption-key` (mode 0600) |
 | CarapaMail local passwords | scrypt hash | Salt + hash stored; plaintext never persisted |
 | MCP bearer tokens | SHA-256 hash | Raw token shown once at generation; only the hash is stored |
 | Encryption key | File-system permissions | Auto-generated key is written with mode 0600; should be backed up separately |
 
 ### Key management
 
-If `ENCRYPTION_KEY` is not set, CarapaMail generates a random 32-byte key on first startup and persists it to `store/.encryption-key`. **If this file is lost, all stored IMAP/SMTP passwords become unrecoverable.** For production deployments:
+If `CARAPA_MAIL_ENCRYPTION_KEY` is not set, CarapaMail generates a random 32-byte key on first startup and persists it to `store/.encryption-key`. **If this file is lost, all stored IMAP/SMTP passwords become unrecoverable.** For production deployments:
 
-1. Set `ENCRYPTION_KEY` explicitly via environment variable
+1. Set `CARAPA_MAIL_ENCRYPTION_KEY` explicitly via environment variable
 2. Back up the key separately from the database
 3. Rotate by: setting a new key, then re-saving each account (triggers re-encryption)
 

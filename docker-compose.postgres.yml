@@ -24,9 +24,9 @@ services:
       - /tmp:noexec,nosuid,size=64m
     secrets:
       - anthropic_auth_token
-      - http_api_token
-      - encryption_key
-      - postgres_password
+      - carapa_mail_token
+      - carapa_mail_encryption_key
+      - carapa_mail_postgres
     env_file:
       - .env
     extra_hosts:
@@ -62,7 +62,7 @@ services:
     security_opt:
       - no-new-privileges:true
     secrets:
-      - postgres_password
+      - carapa_mail_postgres
     expose:
       - "5432"
     volumes:
@@ -73,7 +73,7 @@ services:
     environment:
       POSTGRES_DB: carapamail
       POSTGRES_USER: carapamail
-      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_PASSWORD_FILE: /run/secrets/carapa_mail_postgres
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "carapamail"]
       interval: 10s
@@ -93,9 +93,9 @@ volumes:
 secrets:
   anthropic_auth_token:
     file: ${SECRETS_DIR}/anthropic_api_key
-  http_api_token:
+  carapa_mail_token:
     file: ${SECRETS_DIR}/carapa_mail_token
-  encryption_key:
-    file: ${SECRETS_DIR}/encryption_key
-  postgres_password:
-    file: ${SECRETS_DIR}/postgres_password
+  carapa_mail_encryption_key:
+    file: ${SECRETS_DIR}/carapa_mail_encryption_key
+  carapa_mail_postgres:
+    file: ${SECRETS_DIR}/carapa_mail_postgres

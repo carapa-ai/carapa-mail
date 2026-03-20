@@ -6,7 +6,7 @@ import type { IncomingMessage, ServerResponse } from 'http';
 // Mocks MUST be set up before importing the module that uses them
 mock.module('../config.js', () => ({
     HTTP_PORT: 0,
-    HTTP_API_TOKEN: 'secret',
+    CARAPA_MAIL_TOKEN: 'secret',
     ALLOW_SIGNUP: true,
     PUBLIC_HOSTNAME: 'localhost',
 }));
