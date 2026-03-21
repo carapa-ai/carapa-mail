@@ -439,7 +439,7 @@ docker compose restart carapamail
 If `ANTHROPIC_BASE_URL` points to a service running on the host machine (e.g. Ollama, llama.cpp, LiteLLM):
 
 ```bash
-ANTHROPIC_BASE_URL=http://host.docker.internal:8880
+ANTHROPIC_BASE_URL=http://host.docker.internal:11434
 ```
 
 The `host.docker.internal` hostname is automatically resolved to the host gateway.
