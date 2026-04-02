@@ -10,7 +10,8 @@ services:
     security_opt:
       - no-new-privileges:true
     ports:
-      - "${SMTP_PORT:-2525}:${SMTP_PORT:-2525}"
+      - "${SMTP_INSECURE_PORT:-1525}:${SMTP_INSECURE_PORT:-1525}"
+      - "${SMTP_PORT:-1587}:${SMTP_PORT:-1587}"
       - "${IMAP_PROXY_PORT:-1993}:${IMAP_PROXY_PORT:-1993}"
       - "${HTTP_PORT:-3200}:${HTTP_PORT:-3200}"
       - "127.0.0.1:${MCP_PORT:-3466}:${MCP_PORT:-3466}"

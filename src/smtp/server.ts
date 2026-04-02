@@ -3,7 +3,7 @@
 import net from 'net';
 import tls from 'tls';
 import { SMTPServer } from 'smtp-server';
-import { SMTP_PORT, LOG_LEVEL, BIND_HOST, ALLOW_INSECURE_AUTH } from '../config.js';
+import { SMTP_PORT, SMTP_INSECURE_PORT, LOG_LEVEL, BIND_HOST, ALLOW_INSECURE_AUTH } from '../config.js';
 import { authenticateAccount } from '../accounts.js';
 import { handleMessage } from './handler.js';
 import { logger } from '../logger.js';
@@ -133,6 +133,23 @@ export function startSmtpServer(): net.Server {
   });
 
   server.on('error', (err) => logger.error('smtp', `Proxy error: ${err}`));
+
+  // Plaintext-only server on a separate port (no TLS, no STARTTLS)
+  let insecureServer: net.Server | null = null;
+  if (ALLOW_INSECURE_AUTH && SMTP_INSECURE_PORT) {
+    const plaintextSmtp = new SMTPServer({
+      ...smtpOptions(null),
+      secure: false,
+      hideSTARTTLS: true,
+      allowInsecureAuth: true,
+    });
+    plaintextSmtp.on('error', (err) => logger.error('smtp', `SMTP insecure server error: ${err}`));
+
+    insecureServer = plaintextSmtp.server as net.Server;
+    plaintextSmtp.listen(SMTP_INSECURE_PORT, BIND_HOST, () => {
+      logger.info('smtp', `Insecure server listening on ${BIND_HOST}:${SMTP_INSECURE_PORT} (plaintext only, no STARTTLS)`);
+    });
+  }
 
   // Start outer server once all internal servers are ready
   let readyCount = 0;

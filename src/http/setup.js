@@ -6,6 +6,7 @@ var ALLOW_SIGNUP = '{{ALLOW_SIGNUP}}' === 'true';
 var HAS_TOKEN = '{{HAS_TOKEN}}' === 'true';
 var PUBLIC_HOSTNAME = '{{PUBLIC_HOSTNAME}}' || window.location.hostname;
 var SMTP_PORT = Number('{{SMTP_PORT}}') || 2525;
+var SMTP_INSECURE_PORT = Number('{{SMTP_INSECURE_PORT}}') || 0;
 var IMAP_PORT = Number('{{IMAP_PORT}}') || 1993;
 var MCP_PORT = Number('{{MCP_PORT}}') || 3466;
 var MCP_ENABLED = '{{MCP_ENABLED}}' === 'true';
@@ -590,10 +591,9 @@ function render() {
       <p style="font-weight:500;margin-bottom:8px;color:#fff;">Mail client settings</p>
       <div style="font-size:13px;line-height:1.8;color:#ccc;">
         <strong style="color:#fff;">IMAP:</strong> ${esc(PUBLIC_HOSTNAME)}:${IMAP_PORT}<br>
-        <strong style="color:#fff;">SMTP:</strong> ${esc(PUBLIC_HOSTNAME)}:${SMTP_PORT}<br>
+        <strong style="color:#fff;">SMTP:</strong> ${esc(PUBLIC_HOSTNAME)}:${SMTP_PORT} (STARTTLS)${SMTP_INSECURE_PORT ? '<br>\n        <strong style="color:#fff;">SMTP (plain):</strong> ' + esc(PUBLIC_HOSTNAME) + ':' + SMTP_INSECURE_PORT + ' (no encryption)' : ''}<br>
         <strong style="color:#fff;">Username:</strong> ${esc(a.email)}<br>
-        <strong style="color:#fff;">Password:</strong> your CarapaMail password<br>
-        <strong style="color:#fff;">Security:</strong> None (local proxy)
+        <strong style="color:#fff;">Password:</strong> your CarapaMail password
       </div>
     </div>`;
     if (MCP_ENABLED && a.mcpTokenSet) {
