@@ -1,7 +1,7 @@
 {
   "name": "carapa-mail",
   "version": "0.9.0-beta.1",
-  "license": "PolyForm Noncommercial License 1.0.0",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
   "scripts": {
     "dev": "bun --watch src/index.ts",
