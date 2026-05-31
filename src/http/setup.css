@@ -475,6 +475,27 @@
     margin-top: 8px;
   }
 
+  .provider-hint {
+    background: rgba(34, 211, 238, 0.08);
+    border: 1px solid rgba(34, 211, 238, 0.3);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    color: #cbd5e1;
+    line-height: 1.5;
+  }
+
+  .provider-hint a {
+    color: #22d3ee;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .provider-hint a:hover {
+    text-decoration: underline;
+  }
+
   .empty {
     text-align: center;
     padding: 40px;

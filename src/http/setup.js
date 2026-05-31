@@ -14,20 +14,79 @@ var MCP_PUBLIC_URL = '{{MCP_PUBLIC_URL}}';
 var isGuest = ALLOW_SIGNUP && HAS_TOKEN && (!apiToken);
 var isUser = authMode === 'user';
 
-// Auto-fill IMAP/SMTP from email domain
-document.getElementById('f-email').addEventListener('change', function () {
-  const email = this.value;
-  if (!email.includes('@')) return;
-  const domain = email.split('@')[1];
-  const imapHost = document.getElementById('f-imapHost');
-  const smtpHost = document.getElementById('f-smtpHost');
-  const imapUser = document.getElementById('f-imapUser');
-  const smtpUser = document.getElementById('f-smtpUser');
-  if (!imapHost.value) imapHost.value = 'imap.' + domain;
-  if (!smtpHost.value) smtpHost.value = 'smtp.' + domain;
-  if (!imapUser.value) imapUser.value = email;
-  if (!smtpUser.value) smtpUser.value = email;
-});
+// Known providers: correct IMAP/SMTP hosts (a naive imap.<domain> guess is wrong
+// for several of these, e.g. Yahoo needs imap.mail.yahoo.com) plus the app-password
+// help page. All of these reject the normal account password over IMAP/SMTP and
+// require an app-specific password.
+// smtpPort/smtpSecure default to 587/starttls; Yahoo & AOL (shared backend) need
+// implicit TLS on 465 instead.
+var MAIL_PROVIDERS = {
+  'yahoo.com': { imap: 'imap.mail.yahoo.com', smtp: 'smtp.mail.yahoo.com', smtpPort: 465, smtpSecure: 'tls', label: 'Yahoo', appPw: 'https://login.yahoo.com/myaccount/security/' },
+  'yahoo.co.uk': { imap: 'imap.mail.yahoo.com', smtp: 'smtp.mail.yahoo.com', smtpPort: 465, smtpSecure: 'tls', label: 'Yahoo', appPw: 'https://login.yahoo.com/myaccount/security/' },
+  'yahoo.de': { imap: 'imap.mail.yahoo.com', smtp: 'smtp.mail.yahoo.com', smtpPort: 465, smtpSecure: 'tls', label: 'Yahoo', appPw: 'https://login.yahoo.com/myaccount/security/' },
+  'ymail.com': { imap: 'imap.mail.yahoo.com', smtp: 'smtp.mail.yahoo.com', smtpPort: 465, smtpSecure: 'tls', label: 'Yahoo', appPw: 'https://login.yahoo.com/myaccount/security/' },
+  'gmail.com': { imap: 'imap.gmail.com', smtp: 'smtp.gmail.com', label: 'Gmail', appPw: 'https://myaccount.google.com/apppasswords' },
+  'googlemail.com': { imap: 'imap.gmail.com', smtp: 'smtp.gmail.com', label: 'Gmail', appPw: 'https://myaccount.google.com/apppasswords' },
+  'outlook.com': { imap: 'outlook.office365.com', smtp: 'smtp.office365.com', label: 'Outlook', appPw: 'https://account.microsoft.com/security' },
+  'hotmail.com': { imap: 'outlook.office365.com', smtp: 'smtp.office365.com', label: 'Outlook', appPw: 'https://account.microsoft.com/security' },
+  'live.com': { imap: 'outlook.office365.com', smtp: 'smtp.office365.com', label: 'Outlook', appPw: 'https://account.microsoft.com/security' },
+  'icloud.com': { imap: 'imap.mail.me.com', smtp: 'smtp.mail.me.com', label: 'iCloud', appPw: 'https://account.apple.com/account/manage' },
+  'me.com': { imap: 'imap.mail.me.com', smtp: 'smtp.mail.me.com', label: 'iCloud', appPw: 'https://account.apple.com/account/manage' },
+  'aol.com': { imap: 'imap.aol.com', smtp: 'smtp.aol.com', smtpPort: 465, smtpSecure: 'tls', label: 'AOL', appPw: 'https://login.aol.com/account/security/app-passwords' },
+};
+
+function providerFor(email) {
+  if (!email || !email.includes('@')) return null;
+  return MAIL_PROVIDERS[email.split('@')[1].toLowerCase()] || null;
+}
+
+// Show/hide the "use an App Password" hint for a known provider.
+function updateProviderHint(email) {
+  const hint = document.getElementById('provider-hint');
+  if (!hint) return;
+  const p = providerFor(email);
+  if (!p) { hint.style.display = 'none'; hint.innerHTML = ''; return; }
+  hint.innerHTML = '<strong>' + p.label + '</strong> requires an <strong>App Password</strong> — your normal '
+    + p.label + ' password will be rejected here. Generate one and paste it (spaces are removed automatically) into the '
+    + 'IMAP/SMTP password fields below. <a href="' + p.appPw + '" target="_blank" rel="noopener noreferrer">Create an App Password →</a>';
+  hint.style.display = 'block';
+}
+
+// Values we auto-filled from the email domain, keyed by field id. A field is
+// ours to update only while it still equals what we last wrote (or is empty) —
+// once the user edits it by hand we leave it alone.
+var autofilled = {};
+function setAutofill(id, value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (el.value === '' || el.value === autofilled[id]) {
+    el.value = value;
+    autofilled[id] = value;
+  }
+}
+
+// Auto-fill IMAP/SMTP from email domain (provider-aware). Runs on every
+// keystroke: because we track our own values, a partial mid-typing guess
+// (e.g. "imap.gmail.co") is corrected once the full domain is known.
+function applyEmailDefaults() {
+  const email = document.getElementById('f-email').value.trim();
+  updateProviderHint(email);
+  const at = email.indexOf('@');
+  const domain = at >= 0 ? email.slice(at + 1).toLowerCase() : '';
+  if (!domain) return;
+  const p = MAIL_PROVIDERS[domain];
+  setAutofill('f-imapHost', p ? p.imap : 'imap.' + domain);
+  setAutofill('f-smtpHost', p ? p.smtp : 'smtp.' + domain);
+  setAutofill('f-imapUser', email);
+  setAutofill('f-smtpUser', email);
+  // IMAP is always 993/SSL; SMTP defaults to 587/STARTTLS unless the provider
+  // overrides it (Yahoo/AOL use 465/implicit TLS).
+  setAutofill('f-imapPort', '993');
+  setAutofill('f-smtpPort', String((p && p.smtpPort) || 587));
+  setAutofill('f-smtpSecure', (p && p.smtpSecure) || 'starttls');
+}
+document.getElementById('f-email').addEventListener('change', applyEmailDefaults);
+document.getElementById('f-email').addEventListener('input', applyEmailDefaults);
 
 async function api(path, opts = {}) {
   const headers = { 'Content-Type': 'application/json' };
@@ -671,6 +730,10 @@ function showAddForm() {
   document.getElementById('f-mcpToken').type = 'password';
   document.getElementById('f-mcpTokenStatus').textContent = '';
   document.getElementById('form-error').textContent = '';
+  // Seed the defaults as "ours" so provider detection can upgrade them
+  // (e.g. Yahoo 587/STARTTLS -> 465/TLS) without treating them as user edits.
+  autofilled = { 'f-imapPort': '993', 'f-smtpPort': '587', 'f-smtpSecure': 'starttls' };
+  updateProviderHint('');
   document.getElementById('form-overlay').classList.add('active');
 }
 
@@ -701,6 +764,9 @@ function showEditForm(id) {
   document.getElementById('f-mcpToken').value = '';
   document.getElementById('f-mcpTokenStatus').textContent = acc.mcpTokenSet ? 'Token is set. Leave blank to keep, or enter a new one.' : 'No token set.';
   document.getElementById('form-error').textContent = '';
+  // Editing an existing account: never auto-overwrite its saved values.
+  autofilled = {};
+  updateProviderHint(acc.email);
   document.getElementById('form-overlay').classList.add('active');
 }
 
@@ -722,6 +788,10 @@ async function handleSubmit(e) {
       data[f] = (f === 'imapPort' || f === 'smtpPort') ? parseInt(val) : val;
     }
   }
+  // App passwords (Yahoo/Gmail/etc.) are shown grouped with spaces that are
+  // display-only — strip all whitespace so a pasted value authenticates.
+  if (data.imapPass) data.imapPass = data.imapPass.replace(/\s+/g, '');
+  if (data.smtpPass) data.smtpPass = data.smtpPass.replace(/\s+/g, '');
   data.inboundEnabled = document.getElementById('f-inboundEnabled').checked;
   data.outboundEnabled = document.getElementById('f-outboundEnabled').checked;
   data.mcpReceiveEnabled = document.getElementById('f-mcpReceiveEnabled').checked;

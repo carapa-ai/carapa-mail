@@ -312,9 +312,14 @@ export async function testCredentials(creds: {
       await client.logout();
       imapOk = true;
     } catch (e: any) {
-      let msg = e.message;
-      if (msg.includes('INTERACTIONREQUIRED')) {
+      // ImapFlow throws a generic "Command failed" message; the real reason
+      // lives on responseText / serverResponseCode. Surface it so failures
+      // are diagnosable instead of opaque.
+      let msg = e.responseText || e.serverResponseCode || e.message;
+      if (String(msg).includes('INTERACTIONREQUIRED')) {
         msg = 'Interaction required (MFA). Please use an App Password instead of your regular Microsoft password.';
+      } else if (e.authenticationFailed || e.serverResponseCode === 'AUTHENTICATIONFAILED') {
+        msg = `Authentication failed (${e.responseText || msg}). Yahoo, Gmail and Outlook require an App Password, not your normal account password — and IMAP access must be enabled in the account's settings.`;
       }
       errors.push(`IMAP: ${msg}`);
     }
