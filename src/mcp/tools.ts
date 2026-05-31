@@ -22,6 +22,26 @@ import {
   type McpMode,
 } from './imap-client.js';
 
+/**
+ * A list of email UIDs that tolerates clients (esp. local LLMs) sending the array
+ * as a JSON-encoded string or a comma-separated string instead of a real array.
+ * The published JSON Schema is still `array<number>`; this only loosens input parsing.
+ */
+const uidList = z.preprocess((v) => {
+  if (typeof v === 'string') {
+    const t = v.trim();
+    if (t.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(t);
+        if (Array.isArray(parsed)) return parsed;
+      } catch { /* fall through */ }
+    }
+    if (t === '') return [];
+    return t.includes(',') ? t.split(',').map((x) => x.trim()).filter(Boolean) : [t];
+  }
+  return v;
+}, z.array(z.coerce.number()));
+
 function text(data: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
 }
@@ -102,8 +122,8 @@ export function registerTools(s: McpServer, allowedAccountIds: string[]) {
     'List emails in a folder (newest first). Returns paginated results with items (uid, from, to, subject, date, seen), total, page, totalPages, hasMore.',
     {
       folder: z.string().optional().describe('IMAP folder path (default: INBOX)'),
-      limit: z.number().optional().describe('Max emails to return (default: 20, max: 50)'),
-      page: z.number().optional().describe('Page number for pagination (default: 1)'),
+      limit: z.coerce.number().optional().describe('Max emails to return (default: 20, max: 50)'),
+      page: z.coerce.number().optional().describe('Page number for pagination (default: 1)'),
       account: z.string().optional().describe('Account ID or email (default: first account)'),
     },
     async (args: { folder?: string; limit?: number; page?: number; account?: string }) => {
@@ -124,7 +144,7 @@ export function registerTools(s: McpServer, allowedAccountIds: string[]) {
     'carapamail_read_email',
     'Read a specific email by UID. Returns full headers, text body, and attachment metadata.',
     {
-      uid: z.number().describe('Email UID number'),
+      uid: z.coerce.number().describe('Email UID number'),
       folder: z.string().optional().describe('IMAP folder path (default: INBOX)'),
       account: z.string().optional().describe('Account ID or email (default: first account)'),
     },
@@ -238,8 +258,8 @@ export function registerTools(s: McpServer, allowedAccountIds: string[]) {
       folder: z.string().optional().describe('IMAP folder path (default: INBOX)'),
       since: z.string().optional().describe('Only return emails after this ISO date'),
       before: z.string().optional().describe('Only return emails before this ISO date'),
-      limit: z.number().optional().describe('Max results per page (default: 20, max: 50)'),
-      page: z.number().optional().describe('Page number for pagination (default: 1)'),
+      limit: z.coerce.number().optional().describe('Max results per page (default: 20, max: 50)'),
+      page: z.coerce.number().optional().describe('Page number for pagination (default: 1)'),
       account: z.string().optional().describe('Account ID or email (default: first account)'),
     },
     async (args: { query: string; field?: string; folder?: string; since?: string; before?: string; limit?: number; page?: number; account?: string }) => {
@@ -395,7 +415,7 @@ export function registerTools(s: McpServer, allowedAccountIds: string[]) {
     'carapamail_delete',
     'Delete emails by UID. Supports bulk deletion with multiple UIDs.',
     {
-      uids: z.array(z.number()).describe('Array of email UIDs to delete'),
+      uids: uidList.describe('Array of email UIDs to delete'),
       folder: z.string().optional().describe('IMAP folder path (default: INBOX)'),
       account: z.string().optional().describe('Account ID or email (default: first account)'),
     },
@@ -416,7 +436,7 @@ export function registerTools(s: McpServer, allowedAccountIds: string[]) {
     'carapamail_move',
     'Move emails to another folder by UID. Supports bulk moves with multiple UIDs.',
     {
-      uids: z.array(z.number()).describe('Array of email UIDs to move'),
+      uids: uidList.describe('Array of email UIDs to move'),
       destination: z.string().describe('Destination IMAP folder path'),
       folder: z.string().optional().describe('Source IMAP folder path (default: INBOX)'),
       account: z.string().optional().describe('Account ID or email (default: first account)'),

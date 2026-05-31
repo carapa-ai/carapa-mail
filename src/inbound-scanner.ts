@@ -9,6 +9,7 @@ import {
 } from './config.js';
 import { getScannerState, setScannerState, logAudit, getMatchingRules, insertQuarantine, recordScan, getScan, pruneScans, isWhitelisted } from './db/index.js';
 import { inspectEmail } from './agent/filter.js';
+import { findBodyPart, htmlToText } from './email/html-text.js';
 import { getAllAccounts, type Account } from './accounts.js';
 import { parseHeaders, SECURITY_HEADERS } from './email/parser.js';
 import type { FilterDecision, EmailSummary } from './types.js';
@@ -21,18 +22,6 @@ const SPAM_FOLDER = 'Junk';
 function formatAddress(addrs?: { name?: string; address?: string }[]): string {
   if (!addrs?.length) return '';
   return addrs.map(a => a.name ? `${a.name} <${a.address}>` : a.address || '').join(', ');
-}
-
-function findTextPart(structure: any): string | null {
-  if (!structure) return null;
-  if (structure.type === 'text/plain') return structure.part || '1';
-  if (structure.childNodes) {
-    for (const child of structure.childNodes) {
-      const found = findTextPart(child);
-      if (found) return found;
-    }
-  }
-  return null;
 }
 
 function findAttachments(structure: any): { filename: string; contentType: string; size: number }[] {
@@ -122,15 +111,16 @@ async function processMessage(loop: ScannerLoop, uid: number, uidValidity: numbe
   const subject = msg.envelope?.subject || '(no subject)';
 
   let bodyText = '';
-  const textPart = findTextPart(msg.bodyStructure);
-  if (textPart) {
+  const bodyPart = findBodyPart(msg.bodyStructure);
+  if (bodyPart) {
     try {
-      const { content } = await c.download(String(uid), textPart, { uid: true });
+      const { content } = await c.download(String(uid), bodyPart.part, { uid: true });
       const chunks: Buffer[] = [];
       for await (const chunk of content) {
         chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
       }
       bodyText = Buffer.concat(chunks).toString('utf-8');
+      if (bodyPart.isHtml) bodyText = htmlToText(bodyText);
     } catch {
       // If body download fails, filter with headers only
     }
@@ -209,7 +199,13 @@ async function processMessage(loop: ScannerLoop, uid: number, uidValidity: numbe
     } catch (e: any) {
       logger.error('scanner', `[${account.id}] Failed to move uid=${uid} to ${target}: ${e.message}`);
     }
-    await recordScan(FOLDER, uid, uidValidity, decision.action, decision.reason, 'inbound', account.id);
+    // Fail with the error (quarantine/reject) as before, but on a TRANSIENT AI failure
+    // skip the scan cache so getScan() won't short-circuit a later re-scan of this message.
+    if (!decision.unavailable) {
+      await recordScan(FOLDER, uid, uidValidity, decision.action, decision.reason, 'inbound', account.id);
+    } else {
+      logger.warn('scanner', `[${account.id}] AI filter unavailable for uid=${uid} — applied ${decision.action} but not caching (re-scannable)`);
+    }
 
     if (decision.action === 'quarantine') {
       await insertQuarantine({

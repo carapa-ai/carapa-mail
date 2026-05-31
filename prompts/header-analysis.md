@@ -6,7 +6,7 @@ Analyze the provided email headers and return a JSON report. Pay close attention
 - **Sender Consistency**: Compare `From`, `Reply-To`, `Return-Path`, and `Message-ID` domains.
 - **Service Signatures**: Note if the email was sent via bulk mailers (SendGrid, Mailchimp) or scripts (PHP X-Mailer).
 
-Respond ONLY with a JSON object:
+Output ONLY a single JSON object and nothing else. No preamble, no reasoning, no markdown code fences, and do not re-check or output more than one object. Begin your reply with `{`. Use exactly this shape:
 {
   "is_authentic": true | false,
   "risk_score": 0.0-1.0,

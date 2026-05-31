@@ -5,6 +5,7 @@ import { IMAP_PROXY_PORT } from '../config.js';
 import { getAllAccounts, getAccountById, getAccountByEmail, type Account } from '../accounts.js';
 import { sanitizeBody, sanitizeHtml } from '../imap/sanitizer.js';
 import { parseHeaders, SECURITY_HEADERS } from '../email/parser.js';
+import { findBodyPart, htmlToText } from '../email/html-text.js';
 import { logger } from '../logger.js';
 
 
@@ -116,17 +117,6 @@ function formatAddress(addrs?: { name?: string; address?: string }[]): string {
   return addrs.map(a => a.name ? `${a.name} <${a.address}>` : a.address || '').join(', ');
 }
 
-function findTextPart(structure: any): string | null {
-  if (!structure) return null;
-  if (structure.type === 'text/plain') return structure.part || '1';
-  if (structure.childNodes) {
-    for (const child of structure.childNodes) {
-      const found = findTextPart(child);
-      if (found) return found;
-    }
-  }
-  return null;
-}
 
 function findAttachments(structure: any): { name: string; type: string; size: number }[] {
   const result: { name: string; type: string; size: number }[] = [];
@@ -226,16 +216,18 @@ export async function getMessage(folder: string, uid: number, accountId?: string
     // Parse security-relevant headers
     const rawHeaders = msg.headers ? parseHeaders(msg.headers) : {};
 
-    // Get text body (unsanitized — sanitization deferred to tools.ts after AI filter)
+    // Get text body (unsanitized — sanitization deferred to tools.ts after AI filter).
+    // Falls back to the HTML part (converted to text) for HTML-only emails.
     let bodyText = '';
-    const textPart = findTextPart(msg.bodyStructure);
-    if (textPart) {
-      const { content } = await c.download(String(uid), textPart, { uid: true });
+    const bodyPart = findBodyPart(msg.bodyStructure);
+    if (bodyPart) {
+      const { content } = await c.download(String(uid), bodyPart.part, { uid: true });
       const chunks: Buffer[] = [];
       for await (const chunk of content) {
         chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
       }
       bodyText = Buffer.concat(chunks).toString('utf-8');
+      if (bodyPart.isHtml) bodyText = htmlToText(bodyText);
     }
 
     // Download full RFC822 source for attachment scanning

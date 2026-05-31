@@ -42,6 +42,10 @@ services:
           memory: 512M
           pids: 128
 
+    networks:
+      - default
+      - egress_proxy
+
 volumes:
   store:
 
@@ -52,3 +56,8 @@ secrets:
     file: ${SECRETS_DIR}/carapa_mail_token
   carapa_mail_encryption_key:
     file: ${SECRETS_DIR}/carapa_mail_encryption_key
+
+
+networks:  
+  egress_proxy:
+    external: true

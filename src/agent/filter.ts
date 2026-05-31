@@ -53,6 +53,75 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
+/**
+ * Yield every top-level, brace-balanced `{...}` object in a string, in order,
+ * respecting strings/escapes so braces inside quoted values don't confuse it.
+ * Used to recover the real verdict even when a model emits extra objects
+ * (e.g. an echoed schema template) before or after it.
+ */
+function* balancedObjects(s: string): Generator<string> {
+  let i = 0;
+  while (i < s.length) {
+    const start = s.indexOf('{', i);
+    if (start === -1) return;
+    let depth = 0;
+    let inStr = false;
+    let esc = false;
+    let end = -1;
+    for (let j = start; j < s.length; j++) {
+      const ch = s[j];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (ch === '\\') esc = true;
+        else if (ch === '"') inStr = false;
+      } else if (ch === '"') {
+        inStr = true;
+      } else if (ch === '{') {
+        depth++;
+      } else if (ch === '}') {
+        depth--;
+        if (depth === 0) { end = j; break; }
+      }
+    }
+    if (end === -1) return; // unterminated object — nothing more to find
+    yield s.slice(start, end + 1);
+    i = end + 1;
+  }
+}
+
+/**
+ * Extract a JSON object from an LLM response. Reasoning/instruct models routinely
+ * surround the answer with prose ("I'll set action to pass."), markdown fences,
+ * or even emit a *second* JSON block while second-guessing themselves. We must
+ * take the FIRST complete object, not everything between the first `{` and last
+ * `}` (which would span multiple blocks). Strategy, in order:
+ *   1. the first fenced ```json block, if any;
+ *   2. the whole string (already-clean JSON);
+ *   3. each brace-balanced object in the text, in order, until one parses.
+ * Throws if none parse.
+ */
+function extractJsonObject(raw: string): any {
+  const s = raw.trim();
+  const candidates: string[] = [];
+
+  const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) candidates.push(fence[1].trim());
+
+  candidates.push(s);
+
+  for (const obj of balancedObjects(s)) candidates.push(obj);
+
+  for (const c of candidates) {
+    try {
+      const parsed = JSON.parse(c);
+      if (parsed && typeof parsed === 'object') return parsed;
+    } catch {
+      // try next candidate
+    }
+  }
+  throw new SyntaxError(`No JSON object in model response: ${s.slice(0, 80)}`);
+}
+
 interface HeaderAnalysisReport {
   is_authentic: boolean;
   risk_score: number;
@@ -90,12 +159,7 @@ async function analyzeHeaders(email: EmailSummary, accountId?: string): Promise<
       const text = response.content.find(block => block.type === 'text');
       if (!text || text.type !== 'text') return null;
 
-      let json = text.text.trim();
-      if (json.startsWith('```')) {
-        json = json.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
-      }
-
-      return JSON.parse(json) as HeaderAnalysisReport;
+      return extractJsonObject(text.text) as HeaderAnalysisReport;
     } catch (err) {
       logger.warn('filter', `Header analysis failed: ${err instanceof Error ? err.message : String(err)}`);
       return null;
@@ -360,43 +424,77 @@ export async function checkModelConnection(): Promise<{ ok: boolean; message: st
   }
 }
 
-/** Analyze a single content chunk and return a FilterDecision. */
-function analyzeChunk(content: string, filterContext: FilterContext, accountId?: string): Promise<FilterDecision> {
-  return enqueue(async () => {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), config.FILTER_TIMEOUT);
+/** Correction sent when the first response can't be parsed into a verdict. */
+const STRICT_JSON_RETRY =
+  'Your previous reply could not be parsed. Respond with ONLY the single JSON object described in the ' +
+  'system prompt — no preamble, no explanation, no markdown code fences, and do not output more than one object.';
 
+/** Call the filter model once and return its text block + stop reason. */
+async function callFilterModel(
+  systemPrompt: string,
+  messages: Anthropic.MessageParam[],
+): Promise<{ text: string; stopReason: string | null }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.FILTER_TIMEOUT);
+  try {
     const isAnthropicApi = config.ANTHROPIC_BASE_URL.includes('anthropic.com');
     const response = await getClient().messages.create(
       {
         model: config.ANTHROPIC_MODEL,
         max_tokens: 1024,
         ...(isAnthropicApi ? { thinking: { type: 'disabled' as const } } : {}),
-        system: getFilterPrompt(filterContext, accountId),
-        messages: [{ role: 'user', content }],
+        system: systemPrompt,
+        messages,
       },
       { signal: controller.signal },
     );
-
-    clearTimeout(timeout);
-
     const text = response.content.find(block => block.type === 'text');
-    if (!text || text.type !== 'text') throw new Error(`AI returned no text block (got ${response.content.length} blocks: ${response.content.map(b => b.type).join(', ') || 'empty'})`);
-
-    // Parse JSON from response, tolerating markdown fences
-    let json = text.text.trim();
-    if (json.startsWith('```')) {
-      json = json.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+    if (!text || text.type !== 'text') {
+      throw new Error(`AI returned no text block (got ${response.content.length} blocks: ${response.content.map(b => b.type).join(', ') || 'empty'})`);
     }
+    return { text: text.text, stopReason: response.stop_reason };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
-    const parsed = JSON.parse(json);
-    return {
-      action: parsed.action || 'quarantine',
-      reason: parsed.reason || 'Unknown',
-      confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.5,
-      categories: Array.isArray(parsed.categories) ? parsed.categories : [],
-      move_to: typeof parsed.move_to === 'string' ? parsed.move_to : undefined,
-    };
+function toDecision(parsed: any): FilterDecision {
+  return {
+    action: parsed.action || 'quarantine',
+    reason: parsed.reason || 'Unknown',
+    confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.5,
+    categories: Array.isArray(parsed.categories) ? parsed.categories : [],
+    move_to: typeof parsed.move_to === 'string' ? parsed.move_to : undefined,
+  };
+}
+
+/** Analyze a single content chunk and return a FilterDecision. */
+function analyzeChunk(content: string, filterContext: FilterContext, accountId?: string): Promise<FilterDecision> {
+  return enqueue(async () => {
+    const systemPrompt = getFilterPrompt(filterContext, accountId);
+    logger.debug('filter', `LLM request: model=${config.ANTHROPIC_MODEL} base=${config.ANTHROPIC_BASE_URL} context=${filterContext} sysPromptChars=${systemPrompt.length} contentChars=${content.length}`);
+    if (!systemPrompt) logger.warn('filter', `Empty system prompt for context=${filterContext} account=${accountId ?? 'none'} — model will not know to emit JSON`);
+
+    const messages: Anthropic.MessageParam[] = [{ role: 'user', content }];
+    const first = await callFilterModel(systemPrompt, messages);
+    try {
+      return toDecision(extractJsonObject(first.text));
+    } catch {
+      // The model rambled or emitted multiple/garbled objects. Feed its own reply
+      // back with a strict instruction and retry once before giving up.
+      logger.warn('filter', `Unparseable LLM response (context=${filterContext}, ${first.text.length} chars, stop=${first.stopReason}) — retrying with strict-JSON instruction: ${JSON.stringify(first.text.slice(0, 300))}`);
+      const retry = await callFilterModel(systemPrompt, [
+        ...messages,
+        { role: 'assistant', content: first.text },
+        { role: 'user', content: STRICT_JSON_RETRY },
+      ]);
+      try {
+        return toDecision(extractJsonObject(retry.text));
+      } catch (parseErr) {
+        logger.warn('filter', `Retry still unparseable (context=${filterContext}, ${retry.text.length} chars, stop=${retry.stopReason}): ${JSON.stringify(retry.text.slice(0, 300))}`);
+        throw parseErr;
+      }
+    }
   });
 }
 
@@ -439,13 +537,16 @@ export async function inspectEmail(email: EmailSummary, contextOverride?: Filter
     const message = err instanceof Error ? err.message : String(err);
     logger.error('filter', `Agent call failed: ${message}`);
 
-    // Respect configured failure action
+    // Respect configured failure action. Mark the decision `unavailable` so callers
+    // treat it as a TRANSIENT failure (withhold/quarantine for this read) and do NOT
+    // persist it to the scan cache — otherwise a one-off parse error / timeout / empty
+    // body would block the email permanently on every subsequent read.
     const { AI_FAIL_ACTION } = await import('../config.js');
     if (AI_FAIL_ACTION === 'quarantine') {
-      return { action: 'quarantine', reason: `AI unavailable: ${message}`, confidence: 0, categories: [] };
+      return { action: 'quarantine', reason: `AI unavailable: ${message}`, confidence: 0, categories: [], unavailable: true };
     }
     if (AI_FAIL_ACTION === 'reject') {
-      return { action: 'reject', reason: `AI unavailable: ${message}`, confidence: 0, categories: [] };
+      return { action: 'reject', reason: `AI unavailable: ${message}`, confidence: 0, categories: [], unavailable: true };
     }
 
     return PASSTHROUGH;
