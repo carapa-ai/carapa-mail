@@ -518,6 +518,16 @@ async function deleteRule(id) {
   }
 }
 
+async function clearScanCache() {
+  if (!confirm('Clear cached filter verdicts for blocked emails?\n\nThey will be re-scanned on next read, picking up any new allow rules. Verdicts that passed are kept.')) return;
+  try {
+    const r = await apiJson('/scans', { method: 'DELETE' });
+    showMsg('Cleared ' + r.cleared + ' cached block' + (r.cleared === 1 ? '' : 's'), 'success');
+  } catch (err) {
+    showMsg('Failed to clear scan cache: ' + err.message, 'error');
+  }
+}
+
 async function loadWhitelist() {
   const el = document.getElementById('whitelist-list');
   if (!el) return;

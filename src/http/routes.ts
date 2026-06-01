@@ -15,6 +15,7 @@ import {
   listWhitelist,
   addToWhitelist,
   removeFromWhitelist,
+  clearScans,
 } from '../db/index.js';
 import { streamAttachment } from '../mcp/attachment-link.js';
 import { releaseFromQuarantine, deleteFromQuarantine, quarantineMessage } from '../email/quarantine.js';
@@ -173,6 +174,22 @@ const routes: { method: string; pattern: RegExp; handler: RouteHandler }[] = [
       const accountId = getEffectiveAccountId(req, res, requestedId);
       if (accountId === null) return;
       json(res, await getStats(accountId));
+    },
+  },
+
+  // Scan cache — clear cached filter verdicts so emails are re-scanned on next read
+  // (e.g. after adding an allow rule, which the read path only checks AFTER this cache).
+  {
+    method: 'DELETE',
+    pattern: /^\/scans$/,
+    handler: async (req, res) => {
+      if (!requireAdmin(req, res)) return;
+      const url = new URL(req.url || '/', `http://${req.headers.host}`);
+      const account = url.searchParams.get('account') || undefined;
+      const context = url.searchParams.get('context') || undefined;
+      const includePass = /^(1|true)$/i.test(url.searchParams.get('all') || '');
+      const cleared = await clearScans({ accountId: account, context, includePass });
+      json(res, { cleared });
     },
   },
 

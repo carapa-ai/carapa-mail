@@ -387,6 +387,33 @@ export async function recordScan(folder: string, uid: number, uidValidity: numbe
 }
 
 /**
+ * Delete cached scan verdicts from message_scans, forcing a fresh scan on next read.
+ * Useful after adding an allow rule, since the read path checks this cache *before*
+ * consulting rules — stale block verdicts would otherwise keep blocking.
+ * By default clears only blocking verdicts (action <> 'pass'); set includePass to wipe all.
+ * Returns the number of rows deleted.
+ */
+export async function clearScans(opts: {
+  accountId?: string;
+  folder?: string;
+  context?: string;
+  includePass?: boolean;
+} = {}): Promise<number> {
+  const conds: string[] = [];
+  const args: unknown[] = [];
+  if (opts.accountId) { conds.push('account_id = ?'); args.push(opts.accountId); }
+  if (opts.folder) { conds.push('folder = ?'); args.push(opts.folder); }
+  if (opts.context) { conds.push('context = ?'); args.push(opts.context); }
+  if (!opts.includePass) conds.push("action <> 'pass'");
+  const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+  // run() returns void in both adapters, so count first to report how many we cleared.
+  const row = await adapter.queryOne<{ n: number }>(`SELECT COUNT(*) AS n FROM message_scans ${where}`, args);
+  const n = Number(row?.n ?? 0);
+  if (n > 0) await adapter.run(`DELETE FROM message_scans ${where}`, args);
+  return n;
+}
+
+/**
  * Delete scan records for UIDs at or below a threshold.
  * Called after the scanner advances its baseline — older records are dead weight.
  */
