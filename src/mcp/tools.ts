@@ -2,13 +2,14 @@
 
 import crypto from 'crypto';
 import { z } from 'zod';
+import { simpleParser } from 'mailparser';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { getStats, getScan, recordScan, logAudit, getMatchingRules } from '../db/index.js';
+import { getStats, getScan, recordScan, logAudit, getMatchingRules, createAttachmentToken } from '../db/index.js';
 import { inspectEmail } from '../agent/filter.js';
 import { scanAttachments } from '../email/attachment-scanner.js';
 import { relayRawMessage } from '../smtp/relay.js';
 import { getAllAccounts } from '../accounts.js';
-import { AUTO_QUARANTINE, FILTER_CONFIDENCE_THRESHOLD } from '../config.js';
+import { AUTO_QUARANTINE, FILTER_CONFIDENCE_THRESHOLD, ATTACHMENT_LINK_TTL_MS } from '../config.js';
 import type { EmailSummary as FilterEmailSummary } from '../types.js';
 import {
   listFolders,
@@ -20,6 +21,7 @@ import {
   resolveAccount,
   sanitizeMessageBody,
   type McpMode,
+  type EmailDetail,
 } from './imap-client.js';
 
 /**
@@ -67,7 +69,110 @@ function makeRequireAccount(allowedAccountIds: string[]) {
   };
 }
 
-export function registerTools(s: McpServer, allowedAccountIds: string[]) {
+type GateResult =
+  | { ok: true; message: EmailDetail; rawSource: Buffer; uidValidity: number }
+  | { ok: false; error: ReturnType<typeof error> };
+
+/**
+ * Run the full inbound security gate for an agent-facing email read.
+ * Mirrors the pipeline that protects `carapamail_read_email`: scan cache → attachment
+ * scan → AI/rule decision (recorded + audited) → block on non-pass. Returns the raw,
+ * unsanitized message + RFC822 source on pass; the caller is responsible for sanitizing
+ * the body before returning it to an agent.
+ */
+async function gateInboundMessage(folder: string, uid: number, accountId: string): Promise<GateResult> {
+  const result = await getMessage(folder, uid, accountId);
+  if (!result) return { ok: false, error: error('Email not found') };
+  const { message, uidValidity, rawSource } = result;
+
+  // Reuse a prior agent-context scan decision when available.
+  const existing = await getScan(folder, uid, uidValidity, 'inbound-agent', accountId);
+  if (existing) {
+    if (existing.action !== 'pass') {
+      return { ok: false, error: error(`Email blocked by security filter: ${existing.reason}`) };
+    }
+    return { ok: true, message, rawSource, uidValidity };
+  }
+
+  // Attachment scanning (MIME-level, independent of AI filter)
+  const attachmentScan = await scanAttachments(rawSource);
+  let attachmentWarning = '';
+  if (!attachmentScan.safe) {
+    attachmentWarning = `\n\n[ATTACHMENT THREATS DETECTED: ${attachmentScan.threats.join(', ')}]`;
+  }
+
+  // Build email summary for AI filter — uses raw (unsanitized) body so AI sees injection patterns
+  const emailSummary: FilterEmailSummary = {
+    direction: 'inbound',
+    from: message.from,
+    to: message.to,
+    subject: message.subject,
+    body: message.body_text.slice(0, 2000) + attachmentWarning,
+    attachments: message.attachments.map(a => ({
+      filename: a.name,
+      contentType: a.type,
+      size: a.size,
+    })),
+    headers: message.rawHeaders,
+  };
+
+  const rule = await getMatchingRules({
+    from: message.from,
+    to: message.to,
+    subject: message.subject,
+    body: message.body_text,
+  }, 'inbound');
+
+  const startTime = Date.now();
+  let decision;
+  const isInbox = /^inbox$/i.test(folder);
+
+  if (rule) {
+    decision = {
+      action: rule.type === 'allow' ? 'pass' as const : rule.type === 'block' ? 'reject' as const : rule.type as 'quarantine',
+      reason: `Matched rule: ${rule.match_field} ~ ${rule.match_pattern}`,
+      confidence: 1,
+      categories: [] as string[],
+    };
+  } else if (!AUTO_QUARANTINE && !isInbox) {
+    // Log-only mode — but INBOX always gets AI-filtered for MCP agents
+    decision = { action: 'pass' as const, reason: 'Log-only mode', confidence: 1, categories: [] as string[] };
+  } else {
+    decision = await inspectEmail(emailSummary, 'inbound-agent', accountId);
+    if (decision.unavailable) {
+      return { ok: false, error: error('Email content withheld: AI security filter is temporarily unavailable. Try again later.') };
+    }
+    if (decision.action === 'reject' && decision.confidence < FILTER_CONFIDENCE_THRESHOLD) {
+      decision.action = 'quarantine';
+      decision.reason += ' (low confidence, quarantined for review)';
+    }
+  }
+
+  const latencyMs = Date.now() - startTime;
+  await recordScan(folder, uid, uidValidity, decision.action, decision.reason, 'inbound-agent', accountId);
+  await logAudit({
+    direction: 'inbound',
+    from_addr: message.from,
+    to_addr: message.to,
+    subject: message.subject,
+    decision,
+    latency_ms: latencyMs,
+    accountId,
+  });
+
+  if (decision.action !== 'pass') {
+    return { ok: false, error: error(`Email blocked by security filter: ${decision.reason}`) };
+  }
+
+  return { ok: true, message, rawSource, uidValidity };
+}
+
+/**
+ * @param attachmentBase Base URL (no trailing slash) for attachment download links,
+ *   resolved per-request from the calling ingress so links point back through the same
+ *   path the caller used. `/attachments/<token>` is appended to it.
+ */
+export function registerTools(s: McpServer, allowedAccountIds: string[], attachmentBase: string) {
   const requireAccount = makeRequireAccount(allowedAccountIds);
   const tool = s.tool.bind(s) as (
     name: string,
@@ -119,7 +224,7 @@ export function registerTools(s: McpServer, allowedAccountIds: string[]) {
 
   tool(
     'carapamail_list_emails',
-    'List emails in a folder (newest first). Returns paginated results with items (uid, from, to, subject, date, seen), total, page, totalPages, hasMore.',
+    'List emails in a folder (newest first). Returns paginated results with items (uid, from, to, subject, date, seen, attachment_count), total, page, totalPages, hasMore.',
     {
       folder: z.string().optional().describe('IMAP folder path (default: INBOX)'),
       limit: z.coerce.number().optional().describe('Max emails to return (default: 20, max: 50)'),
@@ -152,99 +257,83 @@ export function registerTools(s: McpServer, allowedAccountIds: string[]) {
       try {
         const { account: acc, err } = requireAccount(args.account, 'receive');
         if (err) return err;
-        const accountId = acc.id;
         const folder = args.folder || 'INBOX';
-        const result = await getMessage(folder, args.uid, accountId);
-        if (!result) return error('Email not found');
 
-        const { message, uidValidity, rawSource } = result;
-
-        // Check if already scanned (agent context)
-        const existing = await getScan(folder, args.uid, uidValidity, 'inbound-agent', accountId);
-        if (existing) {
-          if (existing.action !== 'pass') {
-            return error(`Email blocked by security filter: ${existing.reason}`);
-          }
-          // Sanitize before returning cached-pass results
-          message.body_text = sanitizeMessageBody(message.body_text);
-          return text(message);
-        }
-
-        // Attachment scanning (MIME-level, independent of AI filter)
-        const attachmentScan = await scanAttachments(rawSource);
-        let attachmentWarning = '';
-        if (!attachmentScan.safe) {
-          attachmentWarning = `\n\n[ATTACHMENT THREATS DETECTED: ${attachmentScan.threats.join(', ')}]`;
-        }
-
-        // Build email summary for AI filter — uses raw (unsanitized) body so AI sees injection patterns
-        const emailSummary: FilterEmailSummary = {
-          direction: 'inbound',
-          from: message.from,
-          to: message.to,
-          subject: message.subject,
-          body: message.body_text.slice(0, 2000) + attachmentWarning,
-          attachments: message.attachments.map(a => ({
-            filename: a.name,
-            contentType: a.type,
-            size: a.size,
-          })),
-          headers: message.rawHeaders,
-        };
-
-        const rule = await getMatchingRules({
-          from: message.from,
-          to: message.to,
-          subject: message.subject,
-          body: message.body_text,
-        }, 'inbound');
-
-        const startTime = Date.now();
-        let decision;
-        const isInbox = /^inbox$/i.test(folder);
-
-        if (rule) {
-          decision = {
-            action: rule.type === 'allow' ? 'pass' as const : rule.type === 'block' ? 'reject' as const : rule.type as 'quarantine',
-            reason: `Matched rule: ${rule.match_field} ~ ${rule.match_pattern}`,
-            confidence: 1,
-            categories: [] as string[],
-          };
-        } else if (!AUTO_QUARANTINE && !isInbox) {
-          // Log-only mode — but INBOX always gets AI-filtered for MCP agents
-          decision = { action: 'pass' as const, reason: 'Log-only mode', confidence: 1, categories: [] as string[] };
-        } else {
-          decision = await inspectEmail(emailSummary, 'inbound-agent', accountId);
-          if (decision.unavailable) {
-            return error('Email content withheld: AI security filter is temporarily unavailable. Try again later.');
-          }
-          if (decision.action === 'reject' && decision.confidence < FILTER_CONFIDENCE_THRESHOLD) {
-            decision.action = 'quarantine';
-            decision.reason += ' (low confidence, quarantined for review)';
-          }
-        }
-
-        const latencyMs = Date.now() - startTime;
-        await recordScan(folder, args.uid, uidValidity, decision.action, decision.reason, 'inbound-agent', accountId);
-        await logAudit({
-          direction: 'inbound',
-          from_addr: message.from,
-          to_addr: message.to,
-          subject: message.subject,
-          decision,
-          latency_ms: latencyMs,
-          accountId,
-        });
-
-        if (decision.action !== 'pass') {
-          return error(`Email blocked by security filter: ${decision.reason}`);
-        }
+        const gate = await gateInboundMessage(folder, args.uid, acc.id);
+        if (!gate.ok) return gate.error;
 
         // Sanitize body AFTER AI inspection (so AI sees raw injection patterns)
-        message.body_text = sanitizeMessageBody(message.body_text);
-        return text(message);
+        gate.message.body_text = sanitizeMessageBody(gate.message.body_text);
+        return text(gate.message);
       } catch (e: any) {
         return error(`Failed to read email: ${e.message}`);
+      }
+    },
+  );
+
+  tool(
+    'carapamail_download_attachment',
+    'Get a short-lived download link for an attachment of an email. Runs the same security gate as carapamail_read_email (blocked/quarantined emails and dangerous attachments are refused). Returns { url, filename, content_type, size, expires_at }; fetch the URL to retrieve the bytes before it expires.',
+    {
+      uid: z.coerce.number().describe('Email UID number'),
+      filename: z.string().describe('Attachment filename (as shown in carapamail_read_email)'),
+      index: z.coerce.number().optional().describe('1-based index to disambiguate multiple attachments with the same filename'),
+      folder: z.string().optional().describe('IMAP folder path (default: INBOX)'),
+      account: z.string().optional().describe('Account ID or email (default: first account)'),
+    },
+    async (args: { uid: number; filename: string; index?: number; folder?: string; account?: string }) => {
+      try {
+        const { account: acc, err } = requireAccount(args.account, 'receive');
+        if (err) return err;
+        const folder = args.folder || 'INBOX';
+
+        const gate = await gateInboundMessage(folder, args.uid, acc.id);
+        if (!gate.ok) return gate.error;
+
+        // Re-check attachment safety explicitly (covers the cached-AI-pass path too).
+        const attachmentScan = await scanAttachments(gate.rawSource);
+        if (!attachmentScan.safe) {
+          return error(`Attachment download blocked: ${attachmentScan.threats.join(', ')}`);
+        }
+
+        // Resolve the requested attachment from the decoded MIME tree.
+        const parsed = await simpleParser(gate.rawSource);
+        const atts = parsed.attachments || [];
+        const wanted = args.filename.trim();
+        const matches = atts.map((a, i) => ({ a, i })).filter(({ a }) => (a.filename || '').trim() === wanted);
+        if (matches.length === 0) {
+          const names = atts.map(a => a.filename || '(unnamed)');
+          return error(`Attachment '${wanted}' not found. Available: ${names.length ? names.join(', ') : '(none)'}`);
+        }
+        let chosen = matches[0];
+        if (matches.length > 1) {
+          if (!args.index) return error(`Multiple attachments named '${wanted}' (${matches.length}). Specify 'index' (1-${matches.length}).`);
+          if (args.index < 1 || args.index > matches.length) return error(`index out of range (1-${matches.length}).`);
+          chosen = matches[args.index - 1];
+        }
+        const att = chosen.a;
+
+        const token = crypto.randomBytes(32).toString('hex');
+        const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+        const expiresAt = new Date(Date.now() + ATTACHMENT_LINK_TTL_MS).toISOString();
+        await createAttachmentToken(tokenHash, {
+          accountId: acc.id,
+          folder,
+          uid: args.uid,
+          filename: att.filename || wanted,
+          attachmentIndex: chosen.i,
+          expiresAt,
+        });
+
+        return text({
+          url: `${attachmentBase}/attachments/${token}`,
+          filename: att.filename || wanted,
+          content_type: att.contentType || 'application/octet-stream',
+          size: att.size ?? 0,
+          expires_at: expiresAt,
+        });
+      } catch (e: any) {
+        return error(`Failed to prepare attachment download: ${e.message}`);
       }
     },
   );

@@ -158,6 +158,27 @@ const migrations: Migration[] = [
       } catch { }
     },
   },
+  {
+    version: 11,
+    description: 'Create attachment_download_tokens table',
+    up: async (adapter) => {
+      await adapter.exec(`
+        CREATE TABLE IF NOT EXISTS attachment_download_tokens (
+          token_hash TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL DEFAULT 'default',
+          folder TEXT NOT NULL,
+          uid INTEGER NOT NULL,
+          filename TEXT NOT NULL,
+          attachment_index INTEGER NOT NULL,
+          expires_at TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+      `);
+      await adapter.exec(
+        `CREATE INDEX IF NOT EXISTS idx_attachment_tokens_expires ON attachment_download_tokens(expires_at);`,
+      );
+    },
+  },
 ];
 
 /**

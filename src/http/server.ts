@@ -61,8 +61,10 @@ export function startHttpServer(): http.Server {
       })());
 
     const pathname = (req.url || '/').split('?')[0];
+    const isAttachmentDownload = req.method === 'GET' && /^\/attachments\/[a-f0-9]{64}$/.test(pathname);
     const isPublic = pathname === '/' || pathname === '/setup' || pathname === '/health'
       || pathname === '/api/auth'
+      || isAttachmentDownload
       || (ALLOW_SIGNUP && req.method === 'POST' && pathname === '/api/accounts');
 
     // Determine auth role
@@ -100,7 +102,7 @@ export function startHttpServer(): http.Server {
         // No token configured — only allow local admin access
         req.carapamailAuth = { type: 'admin' };
       } else if (isPublic) {
-        req.carapamailAuth = (ALLOW_SIGNUP || pathname === '/setup') ? { type: 'guest' } : { type: 'none' };
+        req.carapamailAuth = (ALLOW_SIGNUP || pathname === '/setup' || isAttachmentDownload) ? { type: 'guest' } : { type: 'none' };
       }
     }
 

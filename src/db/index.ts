@@ -398,6 +398,39 @@ export async function pruneScans(folder: string, belowUid: number, uidValidity: 
   return (result as any)?.changes ?? 0;
 }
 
+// --- Attachment download tokens ---
+
+export interface AttachmentTokenRow {
+  account_id: string;
+  folder: string;
+  uid: number;
+  filename: string;
+  attachment_index: number;
+  expires_at: string;
+}
+
+export async function createAttachmentToken(
+  tokenHash: string,
+  data: { accountId: string; folder: string; uid: number; filename: string; attachmentIndex: number; expiresAt: string },
+): Promise<void> {
+  await adapter.run(
+    `INSERT INTO attachment_download_tokens (token_hash, account_id, folder, uid, filename, attachment_index, expires_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [tokenHash, data.accountId, data.folder, data.uid, data.filename, data.attachmentIndex, data.expiresAt, new Date().toISOString()],
+  );
+}
+
+export async function getAttachmentToken(tokenHash: string): Promise<AttachmentTokenRow | null> {
+  return adapter.queryOne<AttachmentTokenRow>(
+    'SELECT account_id, folder, uid, filename, attachment_index, expires_at FROM attachment_download_tokens WHERE token_hash = ?',
+    [tokenHash],
+  );
+}
+
+export async function deleteExpiredAttachmentTokens(): Promise<void> {
+  await adapter.run('DELETE FROM attachment_download_tokens WHERE expires_at < ?', [new Date().toISOString()]);
+}
+
 // --- Stats ---
 
 export async function getStats(accountId?: string): Promise<{ total: number; passed: number; rejected: number; quarantined: number; pending_quarantine: number }> {

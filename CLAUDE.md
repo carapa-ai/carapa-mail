@@ -71,6 +71,18 @@ Configured systematically in `src/config.ts`.
 - **Filtering Thresholds**: `FILTER_CONFIDENCE_THRESHOLD`, `AGENT_CHUNK_TOKENS`
 - **Security Binaries**: `AV_COMMAND` (e.g., `"clamscan --no-summary -"`)
 - **Toggles**: `AUTO_QUARANTINE` (false for log-only), `INBOUND_SCAN`, `MCP_ENABLED`, `DKIM_VERIFY`, `PII_REDACTION`, `STRIP_REMOTE_IMAGES`
+- **Attachment downloads**: `ATTACHMENT_LINK_TTL_MS` (link expiry, default 15 min). The link *host* is not configured here — see below.
+
+## Attachment downloads (MCP)
+
+`carapamail_download_attachment` (in `src/mcp/tools.ts`) lets agents fetch attachment bytes, which `carapamail_read_email` exposes only as metadata. It runs the **same inbound security gate** as `read_email` (shared `gateInboundMessage()` helper) and refuses attachments flagged by the attachment scanner. On success it issues a short-lived token (random, stored sha256-hashed in `attachment_download_tokens`) and returns `{ url, filename, content_type, size, expires_at }`.
+
+**The download route `GET /attachments/<token>` is served on the MCP port** (`src/mcp/server.ts`), alongside `/mcp`, so it rides the *same ingress every consumer already uses* to reach the MCP server. The same handler is also mounted on the HTTP admin server (`src/http/routes.ts`) for direct local/admin access. The token in the URL is the only credential (no `Authorization` header). Redeeming re-fetches the message and decodes the attachment via `simpleParser` (`src/mcp/attachment-link.ts`, shared `streamAttachment()`).
+
+**Link host resolution (the tricky part).** The same carapa-mail process serves three consumer classes over three network paths, and it cannot infer which is calling (the api-relay rewrites `Host` to the upstream). So the *ingress declares* the base via the `x-carapamail-public-base` header, resolved per-request by `resolveAttachmentBase()`:
+- **carapa-box sandboxes** reach carapa-mail only through the api-relay (`http://api-relay:8080/carapa-mail/mcp`); the relay injects `x-carapamail-public-base: http://api-relay:8080/carapa-mail` (see `egress-proxy/api-relay.mjs` `buildHeaders`), so links resolve to `…/carapa-mail/attachments/<token>` and ride the relay back.
+- **carapa-board directLLM** connects directly (`CARAPA_MAIL_MCP_URL`) and injects `x-carapamail-public-base: <CARAPA_MAIL_MCP_URL minus /mcp>`, so links resolve to a carapa-mail host the board can fetch server-side. The board overrides the `carapamail_download_attachment` tool: it downloads the bytes and re-hosts them under its own `/uploads/<folder>/...` (browser-reachable), since the carapa-mail host isn't reachable from the user's browser.
+- **External consumers** on a public MCP ingress fall back to `MCP_PUBLIC_URL` (with any `/mcp` suffix stripped), then `PUBLIC_HOSTNAME`, then the request `Host`.
 
 ## Code conventions
 

@@ -199,7 +199,8 @@ Accounts are managed through the setup UI at `/setup` (or via the `/api/accounts
 | `PII_REDACTION` | `false` | `true` = redact SSNs, credit cards, and API keys in IMAP email content delivered to clients |
 | `MCP_ENABLED` | `false` | Enable MCP server for agent access |
 | `MCP_PORT` | `3466` | MCP server port |
-| `MCP_PUBLIC_URL` | — | Full public URL for the MCP endpoint shown in the setup UI (e.g. `https://mail.example.com:3466/mcp`). Falls back to `https://<PUBLIC_HOSTNAME>:<MCP_PORT>/mcp` |
+| `MCP_PUBLIC_URL` | — | Full public URL for the MCP endpoint shown in the setup UI (e.g. `https://mail.example.com:3466/mcp`). Falls back to `https://<PUBLIC_HOSTNAME>:<MCP_PORT>/mcp`. Also the fallback base for attachment download links when the caller doesn't send `x-carapamail-public-base` |
+| `ATTACHMENT_LINK_TTL_MS` | `900000` | Lifetime of `carapamail_download_attachment` links (default 15 min) |
 | `CARAPA_MAIL_TOKEN` | — | Bearer token for admin API (empty = no auth). Set this in production |
 | `ALLOW_SIGNUP` | `false` | `true` = guests can create accounts via `/setup` without the admin API token |
 | `ALLOW_PROMPT_OVERRIDE` | `true` | `false` = prevent accounts from replacing the system filter prompt with a custom one |
@@ -267,8 +268,9 @@ A token grants access only to accounts where it is set. Within those accounts, o
 |------|-------------|
 | `carapamail_list_accounts` | List accessible accounts (IDs and emails, no passwords) |
 | `carapamail_list_folders` | List IMAP folders with message counts |
-| `carapamail_list_emails` | List emails in a folder (paginated, newest first) |
-| `carapamail_read_email` | Read a specific email by UID (on-demand AI filter on first read) |
+| `carapamail_list_emails` | List emails in a folder (paginated, newest first; each item includes `attachment_count`) |
+| `carapamail_read_email` | Read a specific email by UID (on-demand AI filter on first read); returns attachment metadata (name, type, size) |
+| `carapamail_download_attachment` | Get a short-lived download link for one attachment (runs the same security gate as read) |
 | `carapamail_search` | Search emails with field/date filters (paginated) |
 | `carapamail_send` | Compose and send an email (goes through outbound filter) |
 | `carapamail_delete` | Delete emails by UID (bulk) |
@@ -280,6 +282,18 @@ All tools accept an optional `account` parameter (account ID or email) to target
 All list/search tools return paginated results with `{ items, total, page, totalPages, hasMore }`.
 
 **On-demand filtering:** When an agent reads an email via `carapamail_read_email`, carapamail checks if that message has already been AI-scanned. If not, it runs the full filter pipeline (rules → AI inspection) before returning the content. Flagged emails are moved to Spam and blocked from the agent. Results are cached in `message_scans` so subsequent reads are instant. The inbound scanner also populates this cache for new arriving emails.
+
+### Downloading attachments
+
+`carapamail_read_email` only exposes attachment *metadata* (name, type, size) — never the bytes. To fetch the bytes, an agent calls `carapamail_download_attachment` with the email `uid` and the attachment `filename` (plus optional `index` to disambiguate duplicate filenames). It runs the **same inbound security gate** as a read — emails the AI filter blocked/quarantined, and attachments the scanner flags as dangerous, are refused — then returns:
+
+```json
+{ "url": "…/attachments/<token>", "filename": "invoice.pdf", "content_type": "application/pdf", "size": 159151, "expires_at": "…" }
+```
+
+The `url` is a short-lived, single-purpose link served at `GET /attachments/<token>` on the **MCP port** (so it rides the same ingress the agent already uses to reach `/mcp`). The token is the only credential (stored sha256-hashed; TTL `ATTACHMENT_LINK_TTL_MS`, default 15 min). Fetch the URL to stream the bytes before it expires.
+
+**Link host.** carapa-mail can't infer which network path the caller used (a proxy may rewrite `Host`), so the calling ingress *declares* the base via the `x-carapamail-public-base` header; carapa-mail falls back to `MCP_PUBLIC_URL`, then `PUBLIC_HOSTNAME`, then the request host. For example, agents reaching carapa-mail through the carapa-box api-relay get a relay-reachable `http://api-relay:8080/carapa-mail/attachments/<token>` link, and carapa-board fetches the bytes server-side and re-hosts them so its web users can open them.
 
 ## Admin API
 

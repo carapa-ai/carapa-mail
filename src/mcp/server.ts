@@ -7,6 +7,7 @@ import { MCP_PORT } from '../config.js';
 import { getAccountIdsByMcpToken } from '../accounts.js';
 import { checkRateLimit, recordAttempt } from '../rate-limiter.js';
 import { registerTools } from './tools.js';
+import { resolveAttachmentBase, streamAttachment } from './attachment-link.js';
 import { disconnect as disconnectImap } from './imap-client.js';
 
 function extractBearerToken(req: http.IncomingMessage): string | null {
@@ -32,6 +33,19 @@ export async function startMcpServer(): Promise<http.Server> {
 
     if (url.pathname === '/health') {
       sendJson(res, 200, { status: 'ok' });
+      return;
+    }
+
+    // Attachment download — served on the MCP ingress so it rides the same path
+    // every consumer already uses to reach /mcp (api-relay prefix, board direct,
+    // public proxy). The URL token is the only credential.
+    const attachmentMatch = url.pathname.match(/^\/attachments\/([a-f0-9]{64})$/);
+    if (attachmentMatch) {
+      if (req.method !== 'GET') {
+        sendJson(res, 405, { error: 'Method not allowed. Use GET.' });
+        return;
+      }
+      await streamAttachment(res, attachmentMatch[1]);
       return;
     }
 
@@ -94,7 +108,7 @@ export async function startMcpServer(): Promise<http.Server> {
       name: 'carapamail',
       version: '0.1.0',
     });
-    registerTools(server, allowedAccountIds);
+    registerTools(server, allowedAccountIds, resolveAttachmentBase(req));
 
     await server.connect(transport);
     await transport.handleRequest(req, res, body);

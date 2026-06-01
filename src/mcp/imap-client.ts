@@ -96,6 +96,7 @@ export interface EmailSummary {
   subject: string;
   date: string;
   seen: boolean;
+  attachment_count: number;
 }
 
 export interface EmailDetail extends EmailSummary {
@@ -173,7 +174,7 @@ export async function listMessages(folder: string, limit: number, page: number, 
     if (end < 1) return { items: [], total, page, totalPages, hasMore: false };
 
     const messages: EmailSummary[] = [];
-    for await (const msg of c.fetch(`${start}:${end}`, { envelope: true, flags: true, uid: true })) {
+    for await (const msg of c.fetch(`${start}:${end}`, { envelope: true, flags: true, bodyStructure: true, uid: true })) {
       messages.push({
         uid: msg.uid,
         from: formatAddress(msg.envelope?.from),
@@ -181,6 +182,7 @@ export async function listMessages(folder: string, limit: number, page: number, 
         subject: msg.envelope?.subject || '',
         date: msg.envelope?.date?.toISOString() || '',
         seen: msg.flags?.has('\\Seen') || false,
+        attachment_count: findAttachments(msg.bodyStructure).length,
       });
     }
     // Return newest first
@@ -238,6 +240,8 @@ export async function getMessage(folder: string, uid: number, accountId?: string
     }
     const rawSource = Buffer.concat(rawChunks);
 
+    const attachments = findAttachments(msg.bodyStructure);
+
     return {
       message: {
         uid: msg.uid,
@@ -248,12 +252,30 @@ export async function getMessage(folder: string, uid: number, accountId?: string
         date: msg.envelope?.date?.toISOString() || '',
         seen: msg.flags?.has('\\Seen') || false,
         body_text: bodyText,
-        attachments: findAttachments(msg.bodyStructure),
+        attachments,
+        attachment_count: attachments.length,
         rawHeaders,
       },
       uidValidity,
       rawSource,
     };
+  } finally {
+    lock.release();
+  }
+}
+
+/** Download only the raw RFC822 source of a message (no parsing). Used to redeem attachment links. */
+export async function getRawMessage(folder: string, uid: number, accountId?: string): Promise<Buffer | null> {
+  const c = await getClient(accountId);
+  const lock = await c.getMailboxLock(folder, { readOnly: true });
+  try {
+    const dl = await c.download(String(uid), undefined, { uid: true });
+    if (!dl?.content) return null;
+    const chunks: Buffer[] = [];
+    for await (const chunk of dl.content) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
   } finally {
     lock.release();
   }
@@ -292,7 +314,7 @@ export async function searchMessages(
 
     const pageUids = uids.slice(start, end);
     const messages: EmailSummary[] = [];
-    for await (const msg of c.fetch(pageUids, { envelope: true, flags: true, uid: true }, { uid: true })) {
+    for await (const msg of c.fetch(pageUids, { envelope: true, flags: true, bodyStructure: true, uid: true }, { uid: true })) {
       messages.push({
         uid: msg.uid,
         from: formatAddress(msg.envelope?.from),
@@ -300,6 +322,7 @@ export async function searchMessages(
         subject: msg.envelope?.subject || '',
         date: msg.envelope?.date?.toISOString() || '',
         seen: msg.flags?.has('\\Seen') || false,
+        attachment_count: findAttachments(msg.bodyStructure).length,
       });
     }
     return { items: messages.reverse(), total, page, totalPages, hasMore: page < totalPages };

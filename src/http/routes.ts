@@ -16,6 +16,7 @@ import {
   addToWhitelist,
   removeFromWhitelist,
 } from '../db/index.js';
+import { streamAttachment } from '../mcp/attachment-link.js';
 import { releaseFromQuarantine, deleteFromQuarantine, quarantineMessage } from '../email/quarantine.js';
 import { relayRawMessage } from '../smtp/relay.js';
 import { inspectEmail } from '../agent/filter.js';
@@ -149,6 +150,16 @@ const routes: { method: string; pattern: RegExp; handler: RouteHandler }[] = [
     pattern: /^\/health$/,
     handler: async (_req, res) => {
       json(res, { status: 'ok' });
+    },
+  },
+
+  // Attachment download (public — the URL token is the credential). Shared handler
+  // with the MCP-port route; this one covers direct hits on the HTTP admin port.
+  {
+    method: 'GET',
+    pattern: /^\/attachments\/(?<token>[a-f0-9]{64})$/,
+    handler: async (_req, res, params) => {
+      await streamAttachment(res, params.token);
     },
   },
 

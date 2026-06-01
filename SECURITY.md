@@ -172,6 +172,8 @@ MIME-level analysis using `mailparser`:
 - **Dangerous MIME types** — `application/x-msdownload`, `application/x-executable`, etc.
 - **External antivirus** — optional `AV_COMMAND` config (e.g., `clamscan --no-summary -`); each attachment is piped to the command via stdin, exit code 0 = clean
 
+**Attachment bytes are never returned inline.** `carapamail_read_email` exposes only attachment metadata (name, type, size). Bytes are obtained only via `carapamail_download_attachment`, which first runs the full inbound gate (a blocked/quarantined email is refused) and the attachment scanner (a dangerous attachment is refused), then issues a short-lived, single-purpose download link. The token is random and stored **sha256-hashed** (a DB read cannot reconstruct a working link), scoped to one account/folder/uid/attachment, and expires after `ATTACHMENT_LINK_TTL_MS` (default 15 min). The download route requires no `Authorization` header — the URL token is the credential — so links should be treated as secrets.
+
 ### DLP and PII redaction (`email/dlp-rules.ts`, `email/secret-scanner.ts`, `email/redactor.ts`)
 
 Before sending email content to the LLM, two layers of redaction are applied:

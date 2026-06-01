@@ -75,6 +75,9 @@ export const MCP_ENABLED = process.env.MCP_ENABLED === 'true';
 export const MCP_PORT = parseInt(process.env.MCP_PORT || '3466', 10);
 export const MCP_PUBLIC_URL = process.env.MCP_PUBLIC_URL || '';
 
+// TTL for tokenized attachment download links (default 15 minutes).
+export const ATTACHMENT_LINK_TTL_MS = parseInt(process.env.ATTACHMENT_LINK_TTL_MS || String(15 * 60 * 1000), 10);
+
 // Behavior
 export const AUTO_QUARANTINE = process.env.AUTO_QUARANTINE !== 'false';
 export const PII_REDACTION = process.env.PII_REDACTION === 'true';
